@@ -10,7 +10,7 @@ import os
 # CONFIGURAÇÃO
 # ==================================================
 
-TOKEN = "MTU0NDAwNjI1OTczMTA3NTE4Mw.GVtnJS.kQfinh_qR_-x8y9BQTLsfiPuhtYsINfTg_D11A"
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 GUILD_ID = 1346237457372418108
 
