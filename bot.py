@@ -38,7 +38,11 @@ GUILD = discord.Object(id=GUILD_ID)
 # BANCO DE DADOS
 # ==================================================
 
-db = sqlite3.connect("tavelada.db", check_same_thread=False)
+db = sqlite3.connect(
+    "tavelada.db",
+    check_same_thread=False
+)
+
 cursor = db.cursor()
 
 
@@ -47,9 +51,9 @@ cursor = db.cursor()
 # ==================================================
 
 def adicionar_coluna_se_nao_existir(tabela, coluna, tipo):
-    """Adiciona uma coluna caso ela ainda não exista."""
-
-    cursor.execute(f"PRAGMA table_info({tabela})")
+    cursor.execute(
+        f"PRAGMA table_info({tabela})"
+    )
 
     colunas = [
         linha[1]
@@ -105,125 +109,35 @@ cursor.execute(
 # MIGRAÇÃO DA TABELA DE FICHAS
 # ==================================================
 
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "nome",
-    "TEXT DEFAULT ''"
-)
+COLUNAS_FICHA = {
+    "nome": "TEXT DEFAULT ''",
+    "idade": "TEXT DEFAULT ''",
+    "sexualidade": "TEXT DEFAULT ''",
+    "altura": "TEXT DEFAULT ''",
+    "peso": "TEXT DEFAULT ''",
+    "descendencia": "TEXT DEFAULT ''",
+    "linhagem_heroica": "TEXT DEFAULT ''",
+    "sub_linhagem": "TEXT DEFAULT ''",
+    "objetivo": "TEXT DEFAULT ''",
+    "medos": "TEXT DEFAULT ''",
+    "personalidade": "TEXT DEFAULT ''",
+    "relacoes": "TEXT DEFAULT ''",
+    "historia": "TEXT DEFAULT ''",
+    "fisico": "INTEGER DEFAULT 0",
+    "conhecimento": "INTEGER DEFAULT 0",
+    "social": "INTEGER DEFAULT 0",
+    "vontade": "INTEGER DEFAULT 0",
+    "pericias": "TEXT DEFAULT '{}'",
+    "xp": "INTEGER DEFAULT 0",
+    "nivel": "INTEGER DEFAULT 1"
+}
 
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "idade",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "sexualidade",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "altura",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "peso",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "descendencia",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "linhagem_heroica",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "sub_linhagem",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "objetivo",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "medos",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "personalidade",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "relacoes",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "historia",
-    "TEXT DEFAULT ''"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "fisico",
-    "INTEGER DEFAULT 0"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "conhecimento",
-    "INTEGER DEFAULT 0"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "social",
-    "INTEGER DEFAULT 0"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "vontade",
-    "INTEGER DEFAULT 0"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "pericias",
-    "TEXT DEFAULT '{}'"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "xp",
-    "INTEGER DEFAULT 0"
-)
-
-adicionar_coluna_se_nao_existir(
-    "fichas",
-    "nivel",
-    "INTEGER DEFAULT 1"
-)
+for coluna, tipo in COLUNAS_FICHA.items():
+    adicionar_coluna_se_nao_existir(
+        "fichas",
+        coluna,
+        tipo
+    )
 
 
 # ==================================================
@@ -447,16 +361,12 @@ def buscar_ficha_dict(user_id):
 
 
 # ==================================================
-# XP NECESSÁRIO PARA O PRÓXIMO NÍVEL
+# XP
 # ==================================================
 
 def xp_para_nivel(nivel):
     return max(1, nivel) * 100
 
-
-# ==================================================
-# ADICIONAR XP
-# ==================================================
 
 def adicionar_xp(user_id, quantidade):
     ficha = buscar_ficha_dict(user_id)
@@ -494,10 +404,6 @@ def adicionar_xp(user_id, quantidade):
 
     return nivel, nivel_antigo, subiu
 
-
-# ==================================================
-# RESETAR NÍVEL
-# ==================================================
 
 def resetar_nivel_jogador(user_id):
     criar_ficha(user_id)
@@ -553,7 +459,9 @@ def criar_embed_ficha(ficha):
     ) = ficha
 
     try:
-        pericias = json.loads(pericias_json or "{}")
+        pericias = json.loads(
+            pericias_json or "{}"
+        )
 
         if not isinstance(pericias, dict):
             pericias = criar_pericias()
@@ -656,7 +564,9 @@ def criar_embed_ficha(ficha):
 # ==================================================
 
 async def mostrar_ficha(interaction):
-    ficha = buscar_ficha(interaction.user.id)
+    ficha = buscar_ficha(
+        interaction.user.id
+    )
 
     embed = criar_embed_ficha(ficha)
 
@@ -963,7 +873,10 @@ class FichaView(discord.ui.View):
 # ==================================================
 
 def tem_cargo(interaction, cargo_id):
-    if not isinstance(interaction.user, discord.Member):
+    if not isinstance(
+        interaction.user,
+        discord.Member
+    ):
         return False
 
     return any(
@@ -1138,7 +1051,7 @@ async def listar_npcs(interaction):
 
 
 # ==================================================
-# VERIFICAR COMBATE
+# COMBATE
 # ==================================================
 
 def combate_ativo():
@@ -1158,10 +1071,6 @@ def combate_ativo():
     return resultado[0] == 1
 
 
-# ==================================================
-# VERIFICAR COMBATENTE DUPLICADO
-# ==================================================
-
 def ja_esta_no_combate(tipo, referencia_id):
     cursor.execute(
         """
@@ -1177,10 +1086,6 @@ def ja_esta_no_combate(tipo, referencia_id):
 
     return cursor.fetchone() is not None
 
-
-# ==================================================
-# ADICIONAR JOGADOR AO COMBATE
-# ==================================================
 
 def adicionar_jogador_combate(user_id):
     if not combate_ativo():
@@ -1259,10 +1164,6 @@ def adicionar_jogador_combate(user_id):
 
     return "sucesso"
 
-
-# ==================================================
-# ADICIONAR NPC AO COMBATE
-# ==================================================
 
 def adicionar_npc_combate(npc_id):
     if not combate_ativo():
@@ -1357,10 +1258,6 @@ def adicionar_npc_combate(npc_id):
 
     return "sucesso"
 
-
-# ==================================================
-# EMBED DO COMBATE
-# ==================================================
 
 def criar_embed_combate():
     if not combate_ativo():
@@ -1483,10 +1380,6 @@ def criar_embed_combate():
     return embed
 
 
-# ==================================================
-# INICIAR COMBATE
-# ==================================================
-
 def iniciar_combate():
     cursor.execute(
         "DELETE FROM combatentes"
@@ -1506,10 +1399,6 @@ def iniciar_combate():
 
     db.commit()
 
-
-# ==================================================
-# PRÓXIMO TURNO
-# ==================================================
 
 def proximo_turno():
     if not combate_ativo():
@@ -1563,7 +1452,7 @@ def proximo_turno():
 
 
 # ==================================================
-# HISTÓRICO DE DADOS
+# HISTÓRICO
 # ==================================================
 
 def registrar_rolagem(
@@ -1624,7 +1513,7 @@ class CombateView(discord.ui.View):
 
 
 # ==================================================
-# VIEW DO MESTRE
+# VIEW DO MESTRE NO COMBATE
 # ==================================================
 
 class CombateMestreView(discord.ui.View):
@@ -1837,78 +1726,6 @@ class NPCSelect(discord.ui.Select):
 
 
 # ==================================================
-# PAINEL PRINCIPAL
-# ==================================================
-
-class PainelPrincipal(discord.ui.View):
-
-    def __init__(self):
-        super().__init__(
-            timeout=None
-        )
-
-    @discord.ui.button(
-        label="Minha Ficha",
-        emoji="👤",
-        style=discord.ButtonStyle.primary
-    )
-    async def minha_ficha(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        await mostrar_ficha(
-            interaction
-        )
-
-    @discord.ui.button(
-        label="Iniciativa",
-        emoji="⚔️",
-        style=discord.ButtonStyle.success
-    )
-    async def iniciativa(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        if eh_pesquisador(interaction):
-            view = CombateMestreView()
-        else:
-            view = CombateView()
-
-        await interaction.response.send_message(
-            embed=criar_embed_combate(),
-            view=view,
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="Rolar D7",
-        emoji="🎲",
-        style=discord.ButtonStyle.secondary
-    )
-    async def rolar(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        resultado = random.randint(1, 7)
-
-        registrar_rolagem(
-            interaction.user.id,
-            interaction.user.display_name,
-            "D7",
-            resultado,
-            7
-        )
-
-        await interaction.response.send_message(
-            f"🎲 **{interaction.user.display_name}** rolou um D7!\n\n"
-            f"Resultado: **{resultado}**"
-        )
-
-
-# ==================================================
 # ESCUDO DO MESTRE
 # ==================================================
 
@@ -2032,6 +1849,703 @@ class BossView(discord.ui.View):
 
 
 # ==================================================
+# SISTEMAS
+# ==================================================
+
+class SistemasView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(
+            timeout=300
+        )
+
+    @discord.ui.button(
+        label="Tavelada",
+        emoji="📜",
+        style=discord.ButtonStyle.primary
+    )
+    async def tavelada(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        embed = discord.Embed(
+            title="📜 TAVELADA",
+            description=(
+                "Sistema próprio da mesa.\n\n"
+                "Escolha uma ferramenta do sistema."
+            ),
+            color=discord.Color.blurple()
+        )
+
+        embed.add_field(
+            name="🎲 Sistema",
+            value="D7 + atributos + perícias.",
+            inline=False
+        )
+
+        embed.add_field(
+            name="⚔️ Combate",
+            value="Iniciativa, turnos e NPCs.",
+            inline=False
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=TaveladaSistemaView()
+        )
+
+    @discord.ui.button(
+        label="Ordem Paranormal",
+        emoji="👁️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def ordem(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistema_desenvolvimento(
+                "👁️ ORDEM PARANORMAL",
+                "A integração do sistema Ordem Paranormal ainda está em desenvolvimento."
+            ),
+            view=SistemaEmDesenvolvimentoView()
+        )
+
+    @discord.ui.button(
+        label="D&D",
+        emoji="🐉",
+        style=discord.ButtonStyle.secondary
+    )
+    async def dnd(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistema_desenvolvimento(
+                "🐉 D&D",
+                "A integração de D&D ainda está em desenvolvimento."
+            ),
+            view=SistemaEmDesenvolvimentoView()
+        )
+
+    @discord.ui.button(
+        label="Pathfinder",
+        emoji="⚔️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def pathfinder(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistema_desenvolvimento(
+                "⚔️ PATHFINDER",
+                "A integração de Pathfinder ainda está em desenvolvimento."
+            ),
+            view=SistemaEmDesenvolvimentoView()
+        )
+
+    @discord.ui.button(
+        label="Voltar",
+        emoji="↩️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def voltar(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_painel_principal(),
+            view=PainelPrincipal()
+        )
+
+
+# ==================================================
+# SISTEMA TAVELADA
+# ==================================================
+
+class TaveladaSistemaView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(
+            timeout=300
+        )
+
+    @discord.ui.button(
+        label="Minha Ficha",
+        emoji="👤",
+        style=discord.ButtonStyle.primary
+    )
+    async def ficha(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await mostrar_ficha(
+            interaction
+        )
+
+    @discord.ui.button(
+        label="Iniciativa",
+        emoji="⚔️",
+        style=discord.ButtonStyle.success
+    )
+    async def iniciativa(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        if eh_pesquisador(interaction):
+            view = CombateMestreView()
+        else:
+            view = CombateView()
+
+        await interaction.response.send_message(
+            embed=criar_embed_combate(),
+            view=view,
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Rolar D7",
+        emoji="🎲",
+        style=discord.ButtonStyle.secondary
+    )
+    async def rolar(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        resultado = random.randint(1, 7)
+
+        registrar_rolagem(
+            interaction.user.id,
+            interaction.user.display_name,
+            "D7",
+            resultado,
+            7
+        )
+
+        await interaction.response.send_message(
+            f"🎲 **{interaction.user.display_name}** rolou um D7!\n\n"
+            f"Resultado: **{resultado}**"
+        )
+
+    @discord.ui.button(
+        label="Voltar",
+        emoji="↩️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def voltar(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistemas(),
+            view=SistemasView()
+        )
+
+
+# ==================================================
+# FICHAS — SELEÇÃO DE SISTEMA
+# ==================================================
+
+class FichasView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(
+            timeout=300
+        )
+
+    @discord.ui.button(
+        label="Tavelada",
+        emoji="📜",
+        style=discord.ButtonStyle.primary
+    )
+    async def tavelada(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await mostrar_ficha(
+            interaction
+        )
+
+    @discord.ui.button(
+        label="Ordem Paranormal",
+        emoji="👁️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def ordem(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistema_desenvolvimento(
+                "👁️ FICHA — ORDEM PARANORMAL",
+                "As fichas de Ordem Paranormal ainda estão em desenvolvimento."
+            ),
+            view=FichaEmDesenvolvimentoView()
+        )
+
+    @discord.ui.button(
+        label="D&D",
+        emoji="🐉",
+        style=discord.ButtonStyle.secondary
+    )
+    async def dnd(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistema_desenvolvimento(
+                "🐉 FICHA — D&D",
+                "As fichas de D&D ainda estão em desenvolvimento."
+            ),
+            view=FichaEmDesenvolvimentoView()
+        )
+
+    @discord.ui.button(
+        label="Pathfinder",
+        emoji="⚔️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def pathfinder(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistema_desenvolvimento(
+                "⚔️ FICHA — PATHFINDER",
+                "As fichas de Pathfinder ainda estão em desenvolvimento."
+            ),
+            view=FichaEmDesenvolvimentoView()
+        )
+
+    @discord.ui.button(
+        label="Voltar",
+        emoji="↩️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def voltar(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_painel_principal(),
+            view=PainelPrincipal()
+        )
+
+
+# ==================================================
+# ROLAGENS
+# ==================================================
+
+class RolagensView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(
+            timeout=300
+        )
+
+    @discord.ui.button(
+        label="Rolar D7",
+        emoji="🎲",
+        style=discord.ButtonStyle.primary
+    )
+    async def d7(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        resultado = random.randint(1, 7)
+
+        registrar_rolagem(
+            interaction.user.id,
+            interaction.user.display_name,
+            "D7",
+            resultado,
+            7
+        )
+
+        await interaction.response.send_message(
+            f"🎲 **{interaction.user.display_name}** rolou D7!\n\n"
+            f"Resultado: **{resultado}**"
+        )
+
+    @discord.ui.button(
+        label="Histórico",
+        emoji="📜",
+        style=discord.ButtonStyle.secondary
+    )
+    async def historico(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        cursor.execute(
+            """
+            SELECT tipo, resultado, dado, data
+            FROM historico_rolagens
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 15
+            """,
+            (interaction.user.id,)
+        )
+
+        rolagens = cursor.fetchall()
+
+        if not rolagens:
+            await interaction.response.send_message(
+                "📜 Você ainda não possui rolagens no histórico.",
+                ephemeral=True
+            )
+            return
+
+        texto = ""
+
+        for tipo, resultado, dado, data in rolagens:
+            texto += (
+                f"🎲 **{tipo}** → `{resultado}` "
+                f"(D{dado})\n"
+            )
+
+        embed = discord.Embed(
+            title="📜 HISTÓRICO DE ROLAGENS",
+            description=texto,
+            color=discord.Color.blurple()
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Voltar",
+        emoji="↩️",
+        style=discord.ButtonStyle.secondary
+    )
+    async def voltar(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_painel_principal(),
+            view=PainelPrincipal()
+        )
+
+
+# ==================================================
+# VIEWS DE DESENVOLVIMENTO
+# ==================================================
+
+def criar_embed_sistema_desenvolvimento(
+    titulo,
+    descricao
+):
+    return discord.Embed(
+        title=titulo,
+        description=(
+            f"{descricao}\n\n"
+            "🛠️ O sistema será integrado futuramente "
+            "sem afetar as ferramentas já existentes."
+        ),
+        color=discord.Color.dark_grey()
+    )
+
+
+class SistemaEmDesenvolvimentoView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(
+            timeout=300
+        )
+
+    @discord.ui.button(
+        label="Voltar aos Sistemas",
+        emoji="↩️",
+        style=discord.ButtonStyle.primary
+    )
+    async def voltar(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistemas(),
+            view=SistemasView()
+        )
+
+
+class FichaEmDesenvolvimentoView(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(
+            timeout=300
+        )
+
+    @discord.ui.button(
+        label="Voltar às Fichas",
+        emoji="↩️",
+        style=discord.ButtonStyle.primary
+    )
+    async def voltar(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_fichas(),
+            view=FichasView()
+        )
+
+
+# ==================================================
+# EMBEDS DO PAINEL
+# ==================================================
+
+def criar_embed_painel_principal():
+    embed = discord.Embed(
+        title="🎲 TAVELADA RPG",
+        description=(
+            "Central de ferramentas da mesa.\n\n"
+            "Escolha uma categoria:"
+        ),
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="📚 Sistemas",
+        value=(
+            "Escolha e acesse os sistemas "
+            "disponíveis no Tavelada."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📖 Fichas",
+        value=(
+            "Crie e gerencie fichas "
+            "de personagem."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚔️ Combate",
+        value=(
+            "Veja a iniciativa e o "
+            "combate atual."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎲 Rolagens",
+        value=(
+            "Faça rolagens e consulte "
+            "seu histórico."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🛡️ Mestre",
+        value=(
+            "Ferramentas exclusivas "
+            "dos Pesquisadores."
+        ),
+        inline=False
+    )
+
+    embed.set_footer(
+        text="Tavelada RPG • Painel Principal"
+    )
+
+    return embed
+
+
+def criar_embed_sistemas():
+    embed = discord.Embed(
+        title="📚 SISTEMAS",
+        description=(
+            "Escolha o sistema que deseja acessar."
+        ),
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="📜 Tavelada",
+        value="Sistema próprio da mesa.",
+        inline=False
+    )
+
+    embed.add_field(
+        name="👁️ Ordem Paranormal",
+        value="Integração em desenvolvimento.",
+        inline=False
+    )
+
+    embed.add_field(
+        name="🐉 D&D",
+        value="Integração em desenvolvimento.",
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚔️ Pathfinder",
+        value="Integração em desenvolvimento.",
+        inline=False
+    )
+
+    return embed
+
+
+def criar_embed_fichas():
+    return discord.Embed(
+        title="📖 FICHAS",
+        description=(
+            "Escolha o sistema da ficha que deseja acessar."
+        ),
+        color=discord.Color.blurple()
+    )
+
+
+# ==================================================
+# PAINEL PRINCIPAL NOVO
+# ==================================================
+
+class PainelPrincipal(discord.ui.View):
+
+    def __init__(self):
+        super().__init__(
+            timeout=None
+        )
+
+    @discord.ui.button(
+        label="Sistemas",
+        emoji="📚",
+        style=discord.ButtonStyle.primary
+    )
+    async def sistemas(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_sistemas(),
+            view=SistemasView()
+        )
+
+    @discord.ui.button(
+        label="Fichas",
+        emoji="📖",
+        style=discord.ButtonStyle.primary
+    )
+    async def fichas(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=criar_embed_fichas(),
+            view=FichasView()
+        )
+
+    @discord.ui.button(
+        label="Combate",
+        emoji="⚔️",
+        style=discord.ButtonStyle.success
+    )
+    async def combate(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        if eh_pesquisador(interaction):
+            view = CombateMestreView()
+        else:
+            view = CombateView()
+
+        await interaction.response.send_message(
+            embed=criar_embed_combate(),
+            view=view,
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Rolagens",
+        emoji="🎲",
+        style=discord.ButtonStyle.secondary
+    )
+    async def rolagens(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        embed = discord.Embed(
+            title="🎲 ROLAGENS",
+            description=(
+                "Escolha uma ferramenta de rolagem."
+            ),
+            color=discord.Color.blurple()
+        )
+
+        await interaction.response.edit_message(
+            embed=embed,
+            view=RolagensView()
+        )
+
+    @discord.ui.button(
+        label="Mestre",
+        emoji="🛡️",
+        style=discord.ButtonStyle.danger
+    )
+    async def mestre(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message(
+                "🔒 **Acesso negado.**\n"
+                "Somente Pesquisadores podem utilizar "
+                "o Escudo do Mestre.",
+                ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title="🛡️ ESCUDO DO MESTRE",
+            description=(
+                "Área privada dos Pesquisadores.\n\n"
+                "Aqui ficam as ferramentas da mesa."
+            ),
+            color=discord.Color.dark_red()
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=EscudoMestre(),
+            ephemeral=True
+        )
+
+
+# ==================================================
 # /PAINEL
 # ==================================================
 
@@ -2043,41 +2557,8 @@ class BossView(discord.ui.View):
 async def painel(
     interaction: discord.Interaction
 ):
-    embed = discord.Embed(
-        title="🎲 TAVELADA RPG",
-        description=(
-            "Sistema de RPG para sua mesa.\n\n"
-            "Escolha uma opção:"
-        ),
-        color=discord.Color.blurple()
-    )
-
-    embed.add_field(
-        name="👤 Ficha",
-        value="Acesse sua ficha de personagem.",
-        inline=False
-    )
-
-    embed.add_field(
-        name="⚔️ Iniciativa",
-        value="Veja o combate atual.",
-        inline=False
-    )
-
-    embed.add_field(
-        name="🎲 D7",
-        value="Faça uma rolagem rápida.",
-        inline=False
-    )
-
-    embed.add_field(
-        name="⭐ Progressão",
-        value="Ganhe XP e evolua seu personagem.",
-        inline=False
-    )
-
     await interaction.response.send_message(
-        embed=embed,
+        embed=criar_embed_painel_principal(),
         view=PainelPrincipal()
     )
 
@@ -2097,7 +2578,8 @@ async def mestre(
     if not eh_pesquisador(interaction):
         await interaction.response.send_message(
             "🔒 **Acesso negado.**\n"
-            "Somente Pesquisadores podem utilizar o Escudo do Mestre.",
+            "Somente Pesquisadores podem utilizar "
+            "o Escudo do Mestre.",
             ephemeral=True
         )
         return
@@ -2448,10 +2930,9 @@ async def on_ready():
 # INICIAR BOT
 # ==================================================
 
-if not TOKEN or TOKEN == "COLE_SEU_NOVO_TOKEN_AQUI":
+if not TOKEN:
     print(
-        "❌ Você precisa colocar o novo TOKEN do bot "
-        "na variável TOKEN."
+        "❌ A variável DISCORD_TOKEN não foi encontrada."
     )
 else:
     client.run(TOKEN)
