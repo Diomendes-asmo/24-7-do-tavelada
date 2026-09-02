@@ -423,6 +423,402 @@ def resetar_nivel_jogador(user_id):
 
 
 # ==================================================
+# ORDEM PARANORMAL
+# ==================================================
+
+ORDEM_PERICIAS = [
+    "Acrobacia", "Adestramento", "Artes", "Atletismo", "Atualidades",
+    "Ciências", "Crime", "Diplomacia", "Enganação", "Fortitude",
+    "Furtividade", "Iniciativa", "Intimidação", "Intuição", "Investigação",
+    "Luta", "Medicina", "Ocultismo", "Percepção", "Pilotagem",
+    "Pontaria", "Profissão", "Reflexos", "Religião", "Sobrevivência",
+    "Tática", "Tecnologia", "Vontade"
+]
+
+ORDEM_PERICIA_ATRIBUTO = {
+    "Acrobacia": "agilidade",
+    "Adestramento": "presenca",
+    "Artes": "presenca",
+    "Atletismo": "forca",
+    "Atualidades": "intelecto",
+    "Ciências": "intelecto",
+    "Crime": "agilidade",
+    "Diplomacia": "presenca",
+    "Enganação": "presenca",
+    "Fortitude": "vigor",
+    "Furtividade": "agilidade",
+    "Iniciativa": "agilidade",
+    "Intimidação": "presenca",
+    "Intuição": "presenca",
+    "Investigação": "intelecto",
+    "Luta": "forca",
+    "Medicina": "intelecto",
+    "Ocultismo": "intelecto",
+    "Percepção": "presenca",
+    "Pilotagem": "agilidade",
+    "Pontaria": "agilidade",
+    "Profissão": "intelecto",
+    "Reflexos": "agilidade",
+    "Religião": "presenca",
+    "Sobrevivência": "intelecto",
+    "Tática": "intelecto",
+    "Tecnologia": "intelecto",
+    "Vontade": "presenca"
+}
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS fichas_ordem (
+    user_id INTEGER PRIMARY KEY,
+    nome TEXT DEFAULT '',
+    jogador TEXT DEFAULT '',
+    origem TEXT DEFAULT '',
+    classe TEXT DEFAULT '',
+    trilha TEXT DEFAULT '',
+    nex INTEGER DEFAULT 5,
+    agilidade INTEGER DEFAULT 1,
+    forca INTEGER DEFAULT 1,
+    intelecto INTEGER DEFAULT 1,
+    presenca INTEGER DEFAULT 1,
+    vigor INTEGER DEFAULT 1,
+    pv INTEGER DEFAULT 0,
+    pv_max INTEGER DEFAULT 0,
+    pe INTEGER DEFAULT 0,
+    pe_max INTEGER DEFAULT 0,
+    san INTEGER DEFAULT 0,
+    san_max INTEGER DEFAULT 0,
+    defesa INTEGER DEFAULT 10,
+    pericias TEXT DEFAULT '{}'
+)
+""")
+db.commit()
+
+
+def criar_pericias_ordem():
+    return {pericia: 0 for pericia in ORDEM_PERICIAS}
+
+
+def calcular_recursos_ordem(nex, vigor, presenca):
+    nex = max(5, int(nex or 5))
+    vigor = int(vigor or 1)
+    presenca = int(presenca or 1)
+    pv_max = 10 + (vigor * 5) + (nex // 5)
+    pe_max = 2 + presenca + (nex // 5)
+    san_max = 10 + (presenca * 5) + (nex // 5)
+    return pv_max, pe_max, san_max
+
+
+def criar_ficha_ordem(user_id):
+    pericias = criar_pericias_ordem()
+    pv_max, pe_max, san_max = calcular_recursos_ordem(5, 1, 1)
+    cursor.execute("""
+        INSERT OR IGNORE INTO fichas_ordem (
+            user_id, pv, pv_max, pe, pe_max, san, san_max, pericias
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, pv_max, pv_max, pe_max, pe_max, san_max, san_max,
+          json.dumps(pericias, ensure_ascii=False)))
+    db.commit()
+
+
+def garantir_ficha_ordem(user_id):
+    criar_ficha_ordem(user_id)
+    cursor.execute("SELECT * FROM fichas_ordem WHERE user_id = ?", (user_id,))
+    linha = cursor.fetchone()
+    colunas = [d[0] for d in cursor.description]
+    ficha = dict(zip(colunas, linha))
+    try:
+        ficha["pericias"] = json.loads(ficha["pericias"] or "{}")
+    except:
+        ficha["pericias"] = criar_pericias_ordem()
+    for p in ORDEM_PERICIAS:
+        ficha["pericias"].setdefault(p, 0)
+    return ficha
+
+
+def criar_embed_ficha_ordem(ficha):
+    embed = discord.Embed(
+        title="👁️ FICHA — ORDEM PARANORMAL",
+        description=f"**{ficha['nome'] or 'Sem nome'}**",
+        color=discord.Color.dark_red()
+    )
+    embed.add_field(
+        name="📋 Informações",
+        value=(
+            f"**Jogador:** {ficha['jogador'] or '—'}\n"
+            f"**Origem:** {ficha['origem'] or '—'}\n"
+            f"**Classe:** {ficha['classe'] or '—'}\n"
+            f"**Trilha:** {ficha['trilha'] or '—'}\n"
+            f"**NEX:** {ficha['nex']}%"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🧠 Atributos",
+        value=(
+            f"**AGI:** `{ficha['agilidade']}`\n"
+            f"**FOR:** `{ficha['forca']}`\n"
+            f"**INT:** `{ficha['intelecto']}`\n"
+            f"**PRE:** `{ficha['presenca']}`\n"
+            f"**VIG:** `{ficha['vigor']}`"
+        ),
+        inline=True
+    )
+    embed.add_field(
+        name="❤️ Recursos",
+        value=(
+            f"**PV:** `{ficha['pv']}/{ficha['pv_max']}`\n"
+            f"**PE:** `{ficha['pe']}/{ficha['pe_max']}`\n"
+            f"**SAN:** `{ficha['san']}/{ficha['san_max']}`\n"
+            f"**Defesa:** `{ficha['defesa']}`"
+        ),
+        inline=True
+    )
+    # Mostra só perícias com bônus != 0 para não estourar
+    pericias_com_bonus = {k: v for k, v in ficha["pericias"].items() if v != 0}
+    if pericias_com_bonus:
+        texto = "\n".join(f"**{k}:** `{v:+d}`" for k, v in sorted(pericias_com_bonus.items()))
+    else:
+        texto = "Nenhuma perícia treinada ainda."
+    embed.add_field(name="🎯 Perícias (treinadas)", value=texto[:1024], inline=False)
+    embed.set_footer(text="Ordem Paranormal • Ficha privada")
+    return embed
+
+
+# ==================================================
+# D&D 5e
+# ==================================================
+
+DND_SKILLS = {
+    "Acrobatics": "dexterity",
+    "Animal Handling": "wisdom",
+    "Arcana": "intelligence",
+    "Athletics": "strength",
+    "Deception": "charisma",
+    "History": "intelligence",
+    "Insight": "wisdom",
+    "Intimidation": "charisma",
+    "Investigation": "intelligence",
+    "Medicine": "wisdom",
+    "Nature": "intelligence",
+    "Perception": "wisdom",
+    "Performance": "charisma",
+    "Persuasion": "charisma",
+    "Religion": "intelligence",
+    "Sleight of Hand": "dexterity",
+    "Stealth": "dexterity",
+    "Survival": "wisdom"
+}
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS fichas_dnd (
+    user_id INTEGER PRIMARY KEY,
+    nome TEXT DEFAULT '',
+    classe TEXT DEFAULT '',
+    raca TEXT DEFAULT '',
+    nivel INTEGER DEFAULT 1,
+    strength INTEGER DEFAULT 10,
+    dexterity INTEGER DEFAULT 10,
+    constitution INTEGER DEFAULT 10,
+    intelligence INTEGER DEFAULT 10,
+    wisdom INTEGER DEFAULT 10,
+    charisma INTEGER DEFAULT 10,
+    hp INTEGER DEFAULT 0,
+    hp_max INTEGER DEFAULT 0,
+    ca INTEGER DEFAULT 10,
+    proficiency INTEGER DEFAULT 2,
+    skills TEXT DEFAULT '{}'
+)
+""")
+db.commit()
+
+
+def criar_skills_dnd():
+    return {skill: 0 for skill in DND_SKILLS}
+
+
+def mod_atributo(valor):
+    return (int(valor) - 10) // 2
+
+
+def criar_ficha_dnd(user_id):
+    skills = criar_skills_dnd()
+    cursor.execute("""
+        INSERT OR IGNORE INTO fichas_dnd (
+            user_id, hp, hp_max, skills
+        ) VALUES (?, 10, 10, ?)
+    """, (user_id, json.dumps(skills, ensure_ascii=False)))
+    db.commit()
+
+
+def garantir_ficha_dnd(user_id):
+    criar_ficha_dnd(user_id)
+    cursor.execute("SELECT * FROM fichas_dnd WHERE user_id = ?", (user_id,))
+    linha = cursor.fetchone()
+    colunas = [d[0] for d in cursor.description]
+    ficha = dict(zip(colunas, linha))
+    try:
+        ficha["skills"] = json.loads(ficha["skills"] or "{}")
+    except:
+        ficha["skills"] = criar_skills_dnd()
+    for s in DND_SKILLS:
+        ficha["skills"].setdefault(s, 0)
+    return ficha
+
+
+def criar_embed_ficha_dnd(ficha):
+    embed = discord.Embed(
+        title="🐉 FICHA — D&D 5e",
+        description=f"**{ficha['nome'] or 'Sem nome'}**",
+        color=discord.Color.dark_green()
+    )
+    embed.add_field(
+        name="📋 Informações",
+        value=(
+            f"**Classe:** {ficha['classe'] or '—'}\n"
+            f"**Raça:** {ficha['raca'] or '—'}\n"
+            f"**Nível:** `{ficha['nivel']}`\n"
+            f"**Proficiência:** `+{ficha['proficiency']}`"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🧠 Atributos",
+        value=(
+            f"**FOR:** `{ficha['strength']}` ({mod_atributo(ficha['strength']):+d})\n"
+            f"**DES:** `{ficha['dexterity']}` ({mod_atributo(ficha['dexterity']):+d})\n"
+            f"**CON:** `{ficha['constitution']}` ({mod_atributo(ficha['constitution']):+d})\n"
+            f"**INT:** `{ficha['intelligence']}` ({mod_atributo(ficha['intelligence']):+d})\n"
+            f"**SAB:** `{ficha['wisdom']}` ({mod_atributo(ficha['wisdom']):+d})\n"
+            f"**CAR:** `{ficha['charisma']}` ({mod_atributo(ficha['charisma']):+d})"
+        ),
+        inline=True
+    )
+    embed.add_field(
+        name="❤️ Combate",
+        value=(
+            f"**HP:** `{ficha['hp']}/{ficha['hp_max']}`\n"
+            f"**CA:** `{ficha['ca']}`"
+        ),
+        inline=True
+    )
+    trained = {k: v for k, v in ficha["skills"].items() if v}
+    if trained:
+        texto = "\n".join(f"**{k}:** `{'✓' if v else ''}`" for k, v in sorted(trained.items()))
+    else:
+        texto = "Nenhuma skill treinada."
+    embed.add_field(name="🎯 Skills treinadas", value=texto[:1024], inline=False)
+    embed.set_footer(text="D&D 5e • Ficha privada")
+    return embed
+
+
+# ==================================================
+# PATHFINDER (simplificado 2e style)
+# ==================================================
+
+PF_SKILLS = [
+    "Acrobatics", "Arcana", "Athletics", "Crafting", "Deception",
+    "Diplomacy", "Intimidation", "Medicine", "Nature", "Occultism",
+    "Performance", "Religion", "Society", "Stealth", "Survival", "Thievery"
+]
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS fichas_pathfinder (
+    user_id INTEGER PRIMARY KEY,
+    nome TEXT DEFAULT '',
+    classe TEXT DEFAULT '',
+    ancestria TEXT DEFAULT '',
+    nivel INTEGER DEFAULT 1,
+    strength INTEGER DEFAULT 10,
+    dexterity INTEGER DEFAULT 10,
+    constitution INTEGER DEFAULT 10,
+    intelligence INTEGER DEFAULT 10,
+    wisdom INTEGER DEFAULT 10,
+    charisma INTEGER DEFAULT 10,
+    hp INTEGER DEFAULT 0,
+    hp_max INTEGER DEFAULT 0,
+    ac INTEGER DEFAULT 10,
+    proficiency INTEGER DEFAULT 2,
+    skills TEXT DEFAULT '{}'
+)
+""")
+db.commit()
+
+
+def criar_skills_pf():
+    return {skill: 0 for skill in PF_SKILLS}
+
+
+def criar_ficha_pathfinder(user_id):
+    skills = criar_skills_pf()
+    cursor.execute("""
+        INSERT OR IGNORE INTO fichas_pathfinder (
+            user_id, hp, hp_max, skills
+        ) VALUES (?, 10, 10, ?)
+    """, (user_id, json.dumps(skills, ensure_ascii=False)))
+    db.commit()
+
+
+def garantir_ficha_pathfinder(user_id):
+    criar_ficha_pathfinder(user_id)
+    cursor.execute("SELECT * FROM fichas_pathfinder WHERE user_id = ?", (user_id,))
+    linha = cursor.fetchone()
+    colunas = [d[0] for d in cursor.description]
+    ficha = dict(zip(colunas, linha))
+    try:
+        ficha["skills"] = json.loads(ficha["skills"] or "{}")
+    except:
+        ficha["skills"] = criar_skills_pf()
+    for s in PF_SKILLS:
+        ficha["skills"].setdefault(s, 0)
+    return ficha
+
+
+def criar_embed_ficha_pathfinder(ficha):
+    embed = discord.Embed(
+        title="⚔️ FICHA — PATHFINDER",
+        description=f"**{ficha['nome'] or 'Sem nome'}**",
+        color=discord.Color.dark_gold()
+    )
+    embed.add_field(
+        name="📋 Informações",
+        value=(
+            f"**Classe:** {ficha['classe'] or '—'}\n"
+            f"**Ancestria:** {ficha['ancestria'] or '—'}\n"
+            f"**Nível:** `{ficha['nivel']}`\n"
+            f"**Proficiência:** `+{ficha['proficiency']}`"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🧠 Atributos",
+        value=(
+            f"**STR:** `{ficha['strength']}` ({mod_atributo(ficha['strength']):+d})\n"
+            f"**DEX:** `{ficha['dexterity']}` ({mod_atributo(ficha['dexterity']):+d})\n"
+            f"**CON:** `{ficha['constitution']}` ({mod_atributo(ficha['constitution']):+d})\n"
+            f"**INT:** `{ficha['intelligence']}` ({mod_atributo(ficha['intelligence']):+d})\n"
+            f"**WIS:** `{ficha['wisdom']}` ({mod_atributo(ficha['wisdom']):+d})\n"
+            f"**CHA:** `{ficha['charisma']}` ({mod_atributo(ficha['charisma']):+d})"
+        ),
+        inline=True
+    )
+    embed.add_field(
+        name="❤️ Combate",
+        value=(
+            f"**HP:** `{ficha['hp']}/{ficha['hp_max']}`\n"
+            f"**AC:** `{ficha['ac']}`"
+        ),
+        inline=True
+    )
+    trained = {k: v for k, v in ficha["skills"].items() if v}
+    if trained:
+        texto = "\n".join(f"**{k}:** `Trained`" for k in sorted(trained.keys()))
+    else:
+        texto = "Nenhuma skill treinada."
+    embed.add_field(name="🎯 Skills treinadas", value=texto[:1024], inline=False)
+    embed.set_footer(text="Pathfinder • Ficha privada")
+    return embed
+
+
+# ==================================================
 # EMBED DA FICHA
 # ==================================================
 
@@ -1849,6 +2245,541 @@ class BossView(discord.ui.View):
 
 
 # ==================================================
+# UI — ORDEM PARANORMAL
+# ==================================================
+
+class OrdemInfoModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="👁️ Informações — Ordem")
+        self.nome = discord.ui.TextInput(label="Nome", required=False, max_length=100, default=(ficha or {}).get("nome", ""))
+        self.jogador = discord.ui.TextInput(label="Jogador", required=False, max_length=100, default=(ficha or {}).get("jogador", ""))
+        self.origem = discord.ui.TextInput(label="Origem", required=False, max_length=100, default=(ficha or {}).get("origem", ""))
+        self.classe = discord.ui.TextInput(label="Classe", required=False, max_length=100, default=(ficha or {}).get("classe", ""))
+        self.trilha = discord.ui.TextInput(label="Trilha", required=False, max_length=100, default=(ficha or {}).get("trilha", ""))
+        for item in [self.nome, self.jogador, self.origem, self.classe, self.trilha]:
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        garantir_ficha_ordem(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_ordem SET nome=?, jogador=?, origem=?, classe=?, trilha=?
+            WHERE user_id=?
+        """, (self.nome.value, self.jogador.value, self.origem.value, self.classe.value, self.trilha.value, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView())
+
+
+class OrdemAtributosModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🧠 Atributos — Ordem")
+        f = ficha or {}
+        self.agilidade = discord.ui.TextInput(label="Agilidade", required=True, default=str(f.get("agilidade", 1)))
+        self.forca = discord.ui.TextInput(label="Força", required=True, default=str(f.get("forca", 1)))
+        self.intelecto = discord.ui.TextInput(label="Intelecto", required=True, default=str(f.get("intelecto", 1)))
+        self.presenca = discord.ui.TextInput(label="Presença", required=True, default=str(f.get("presenca", 1)))
+        self.vigor = discord.ui.TextInput(label="Vigor", required=True, default=str(f.get("vigor", 1)))
+        for item in [self.agilidade, self.forca, self.intelecto, self.presenca, self.vigor]:
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(self.agilidade.value), int(self.forca.value), int(self.intelecto.value),
+                    int(self.presenca.value), int(self.vigor.value)]
+            if any(v < 0 for v in vals):
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message("❌ Atributos precisam ser números ≥ 0.", ephemeral=True)
+            return
+        garantir_ficha_ordem(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_ordem SET agilidade=?, forca=?, intelecto=?, presenca=?, vigor=?
+            WHERE user_id=?
+        """, (*vals, interaction.user.id))
+        cursor.execute("SELECT nex FROM fichas_ordem WHERE user_id=?", (interaction.user.id,))
+        nex = cursor.fetchone()[0]
+        pv_max, pe_max, san_max = calcular_recursos_ordem(nex, vals[4], vals[3])
+        cursor.execute("""
+            UPDATE fichas_ordem SET
+                pv_max=?, pv=MIN(pv, ?),
+                pe_max=?, pe=MIN(pe, ?),
+                san_max=?, san=MIN(san, ?)
+            WHERE user_id=?
+        """, (pv_max, pv_max, pe_max, pe_max, san_max, san_max, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView())
+
+
+class OrdemBonusPericiaModal(discord.ui.Modal):
+    def __init__(self, pericia):
+        super().__init__(title=f"🎯 {pericia}")
+        self.pericia = pericia
+        self.bonus = discord.ui.TextInput(label="Bônus da perícia", placeholder="0", required=True)
+        self.add_item(self.bonus)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            bonus = int(self.bonus.value)
+        except ValueError:
+            await interaction.response.send_message("❌ O bônus precisa ser um número.", ephemeral=True)
+            return
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        ficha["pericias"][self.pericia] = bonus
+        cursor.execute("UPDATE fichas_ordem SET pericias=? WHERE user_id=?",
+                       (json.dumps(ficha["pericias"], ensure_ascii=False), interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView())
+
+
+class OrdemPericiaSelect(discord.ui.Select):
+    def __init__(self, page=0):
+        self.page = page
+        start = page * 25
+        end = start + 25
+        opcoes = [discord.SelectOption(label=p, value=p) for p in ORDEM_PERICIAS[start:end]]
+        super().__init__(placeholder=f"🎯 Perícias (página {page+1})", options=opcoes)
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(OrdemBonusPericiaModal(self.values[0]))
+
+
+class OrdemPericiasView(discord.ui.View):
+    def __init__(self, page=0):
+        super().__init__(timeout=180)
+        self.page = page
+        self.add_item(OrdemPericiaSelect(page))
+        if page > 0:
+            self.add_item(OrdemPericiaPageButton("⬅️ Anterior", page - 1))
+        if (page + 1) * 25 < len(ORDEM_PERICIAS):
+            self.add_item(OrdemPericiaPageButton("Próxima ➡️", page + 1))
+
+
+class OrdemPericiaPageButton(discord.ui.Button):
+    def __init__(self, label, page):
+        super().__init__(label=label, style=discord.ButtonStyle.secondary)
+        self.page = page
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(view=OrdemPericiasView(self.page))
+
+
+class OrdemRolarSelect(discord.ui.Select):
+    def __init__(self, page=0):
+        self.page = page
+        start = page * 25
+        end = start + 25
+        opcoes = [discord.SelectOption(label=p, value=p) for p in ORDEM_PERICIAS[start:end]]
+        super().__init__(placeholder=f"🎲 Rolar perícia (pág. {page+1})", options=opcoes)
+
+    async def callback(self, interaction: discord.Interaction):
+        pericia = self.values[0]
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        atributo_nome = ORDEM_PERICIA_ATRIBUTO[pericia]
+        atributo = ficha[atributo_nome]
+        bonus = ficha["pericias"].get(pericia, 0)
+        d20 = random.randint(1, 20)
+        resultado = d20 + atributo + bonus
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, f"Ordem: {pericia}", resultado, d20)
+        embed = discord.Embed(title="🎲 ROLAGEM — ORDEM PARANORMAL", color=discord.Color.dark_red())
+        embed.add_field(name="Perícia", value=pericia, inline=True)
+        embed.add_field(name="D20", value=str(d20), inline=True)
+        embed.add_field(name="Resultado", value=f"**{resultado}**", inline=True)
+        embed.add_field(name="Cálculo", value=f"`{d20} + {atributo} (atr) + {bonus} (per) = {resultado}`", inline=False)
+        await interaction.response.edit_message(embed=embed, view=OrdemSistemaView())
+
+
+class OrdemRolagemView(discord.ui.View):
+    def __init__(self, page=0):
+        super().__init__(timeout=180)
+        self.add_item(OrdemRolarSelect(page))
+        if page > 0:
+            self.add_item(OrdemRolarPageButton("⬅️", page - 1))
+        if (page + 1) * 25 < len(ORDEM_PERICIAS):
+            self.add_item(OrdemRolarPageButton("➡️", page + 1))
+
+
+class OrdemRolarPageButton(discord.ui.Button):
+    def __init__(self, label, page):
+        super().__init__(label=label, style=discord.ButtonStyle.secondary)
+        self.page = page
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(view=OrdemRolagemView(self.page))
+
+
+class OrdemFichaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Informações", emoji="📋", style=discord.ButtonStyle.primary)
+    async def informacoes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.send_modal(OrdemInfoModal(ficha))
+
+    @discord.ui.button(label="Atributos", emoji="🧠", style=discord.ButtonStyle.primary)
+    async def atributos(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.send_modal(OrdemAtributosModal(ficha))
+
+    @discord.ui.button(label="Perícias", emoji="🎯", style=discord.ButtonStyle.secondary)
+    async def pericias(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Escolha a perícia:", embed=None, view=OrdemPericiasView())
+
+    @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
+    async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView())
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
+class OrdemSistemaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
+    async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView())
+
+    @discord.ui.button(label="Rolar Perícia", emoji="🎲", style=discord.ButtonStyle.success)
+    async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="🎯 Escolha uma perícia:", embed=None, view=OrdemRolagemView())
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
+# ==================================================
+# UI — D&D
+# ==================================================
+
+class DndInfoModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🐉 Informações — D&D")
+        f = ficha or {}
+        self.nome = discord.ui.TextInput(label="Nome", required=False, max_length=100, default=f.get("nome", ""))
+        self.classe = discord.ui.TextInput(label="Classe", required=False, max_length=100, default=f.get("classe", ""))
+        self.raca = discord.ui.TextInput(label="Raça", required=False, max_length=100, default=f.get("raca", ""))
+        self.nivel = discord.ui.TextInput(label="Nível", required=False, default=str(f.get("nivel", 1)))
+        for item in [self.nome, self.classe, self.raca, self.nivel]:
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            nivel = int(self.nivel.value or 1)
+        except:
+            nivel = 1
+        garantir_ficha_dnd(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_dnd SET nome=?, classe=?, raca=?, nivel=? WHERE user_id=?
+        """, (self.nome.value, self.classe.value, self.raca.value, nivel, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_dnd(ficha), view=DndFichaView())
+
+
+class DndAtributosModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🧠 Atributos — D&D")
+        f = ficha or {}
+        self.str_ = discord.ui.TextInput(label="Strength", required=True, default=str(f.get("strength", 10)))
+        self.dex = discord.ui.TextInput(label="Dexterity", required=True, default=str(f.get("dexterity", 10)))
+        self.con = discord.ui.TextInput(label="Constitution", required=True, default=str(f.get("constitution", 10)))
+        self.int_ = discord.ui.TextInput(label="Intelligence", required=True, default=str(f.get("intelligence", 10)))
+        self.wis = discord.ui.TextInput(label="Wisdom", required=True, default=str(f.get("wisdom", 10)))
+        self.cha = discord.ui.TextInput(label="Charisma", required=True, default=str(f.get("charisma", 10)))
+        for item in [self.str_, self.dex, self.con, self.int_, self.wis, self.cha]:
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.str_, self.dex, self.con, self.int_, self.wis, self.cha]]
+        except ValueError:
+            await interaction.response.send_message("❌ Atributos precisam ser números.", ephemeral=True)
+            return
+        garantir_ficha_dnd(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_dnd SET strength=?, dexterity=?, constitution=?, intelligence=?, wisdom=?, charisma=?
+            WHERE user_id=?
+        """, (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_dnd(ficha), view=DndFichaView())
+
+
+class DndSkillSelect(discord.ui.Select):
+    def __init__(self):
+        opcoes = [discord.SelectOption(label=s, value=s) for s in list(DND_SKILLS.keys())[:25]]
+        super().__init__(placeholder="🎯 Escolha uma skill", options=opcoes)
+
+    async def callback(self, interaction: discord.Interaction):
+        skill = self.values[0]
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        atual = ficha["skills"].get(skill, 0)
+        ficha["skills"][skill] = 0 if atual else 1
+        cursor.execute("UPDATE fichas_dnd SET skills=? WHERE user_id=?",
+                       (json.dumps(ficha["skills"], ensure_ascii=False), interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_dnd(ficha), view=DndFichaView())
+
+
+class DndSkillsView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+        self.add_item(DndSkillSelect())
+
+
+class DndRolarSelect(discord.ui.Select):
+    def __init__(self):
+        opcoes = [discord.SelectOption(label=s, value=s) for s in list(DND_SKILLS.keys())[:25]]
+        super().__init__(placeholder="🎲 Rolar skill", options=opcoes)
+
+    async def callback(self, interaction: discord.Interaction):
+        skill = self.values[0]
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        atr_nome = DND_SKILLS[skill]
+        atr = ficha[atr_nome]
+        mod = mod_atributo(atr)
+        trained = ficha["skills"].get(skill, 0)
+        prof = ficha["proficiency"] if trained else 0
+        d20 = random.randint(1, 20)
+        resultado = d20 + mod + prof
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, f"D&D: {skill}", resultado, d20)
+        embed = discord.Embed(title="🎲 ROLAGEM — D&D 5e", color=discord.Color.dark_green())
+        embed.add_field(name="Skill", value=skill, inline=True)
+        embed.add_field(name="D20", value=str(d20), inline=True)
+        embed.add_field(name="Resultado", value=f"**{resultado}**", inline=True)
+        embed.add_field(name="Cálculo", value=f"`{d20} + {mod} (mod) + {prof} (prof) = {resultado}`", inline=False)
+        await interaction.response.edit_message(embed=embed, view=DndSistemaView())
+
+
+class DndRolagemView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+        self.add_item(DndRolarSelect())
+
+
+class DndFichaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Informações", emoji="📋", style=discord.ButtonStyle.primary)
+    async def informacoes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        await interaction.response.send_modal(DndInfoModal(ficha))
+
+    @discord.ui.button(label="Atributos", emoji="🧠", style=discord.ButtonStyle.primary)
+    async def atributos(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        await interaction.response.send_modal(DndAtributosModal(ficha))
+
+    @discord.ui.button(label="Skills", emoji="🎯", style=discord.ButtonStyle.secondary)
+    async def skills(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Clique na skill para marcar/desmarcar como treinada:", embed=None, view=DndSkillsView())
+
+    @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
+    async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_dnd(ficha), view=DndFichaView())
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
+class DndSistemaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
+    async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_dnd(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_dnd(ficha), view=DndFichaView())
+
+    @discord.ui.button(label="Rolar Skill", emoji="🎲", style=discord.ButtonStyle.success)
+    async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="🎲 Escolha uma skill:", embed=None, view=DndRolagemView())
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
+# ==================================================
+# UI — PATHFINDER
+# ==================================================
+
+class PfInfoModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="⚔️ Informações — Pathfinder")
+        f = ficha or {}
+        self.nome = discord.ui.TextInput(label="Nome", required=False, max_length=100, default=f.get("nome", ""))
+        self.classe = discord.ui.TextInput(label="Classe", required=False, max_length=100, default=f.get("classe", ""))
+        self.ancestria = discord.ui.TextInput(label="Ancestria", required=False, max_length=100, default=f.get("ancestria", ""))
+        self.nivel = discord.ui.TextInput(label="Nível", required=False, default=str(f.get("nivel", 1)))
+        for item in [self.nome, self.classe, self.ancestria, self.nivel]:
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            nivel = int(self.nivel.value or 1)
+        except:
+            nivel = 1
+        garantir_ficha_pathfinder(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_pathfinder SET nome=?, classe=?, ancestria=?, nivel=? WHERE user_id=?
+        """, (self.nome.value, self.classe.value, self.ancestria.value, nivel, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_pathfinder(ficha), view=PfFichaView())
+
+
+class PfAtributosModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🧠 Atributos — Pathfinder")
+        f = ficha or {}
+        self.str_ = discord.ui.TextInput(label="Strength", required=True, default=str(f.get("strength", 10)))
+        self.dex = discord.ui.TextInput(label="Dexterity", required=True, default=str(f.get("dexterity", 10)))
+        self.con = discord.ui.TextInput(label="Constitution", required=True, default=str(f.get("constitution", 10)))
+        self.int_ = discord.ui.TextInput(label="Intelligence", required=True, default=str(f.get("intelligence", 10)))
+        self.wis = discord.ui.TextInput(label="Wisdom", required=True, default=str(f.get("wisdom", 10)))
+        self.cha = discord.ui.TextInput(label="Charisma", required=True, default=str(f.get("charisma", 10)))
+        for item in [self.str_, self.dex, self.con, self.int_, self.wis, self.cha]:
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.str_, self.dex, self.con, self.int_, self.wis, self.cha]]
+        except ValueError:
+            await interaction.response.send_message("❌ Atributos precisam ser números.", ephemeral=True)
+            return
+        garantir_ficha_pathfinder(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_pathfinder SET strength=?, dexterity=?, constitution=?, intelligence=?, wisdom=?, charisma=?
+            WHERE user_id=?
+        """, (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_pathfinder(ficha), view=PfFichaView())
+
+
+class PfSkillSelect(discord.ui.Select):
+    def __init__(self):
+        opcoes = [discord.SelectOption(label=s, value=s) for s in PF_SKILLS]
+        super().__init__(placeholder="🎯 Escolha uma skill", options=opcoes)
+
+    async def callback(self, interaction: discord.Interaction):
+        skill = self.values[0]
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        atual = ficha["skills"].get(skill, 0)
+        ficha["skills"][skill] = 0 if atual else 1
+        cursor.execute("UPDATE fichas_pathfinder SET skills=? WHERE user_id=?",
+                       (json.dumps(ficha["skills"], ensure_ascii=False), interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_pathfinder(ficha), view=PfFichaView())
+
+
+class PfSkillsView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+        self.add_item(PfSkillSelect())
+
+
+class PfRolarSelect(discord.ui.Select):
+    def __init__(self):
+        opcoes = [discord.SelectOption(label=s, value=s) for s in PF_SKILLS]
+        super().__init__(placeholder="🎲 Rolar skill", options=opcoes)
+
+    async def callback(self, interaction: discord.Interaction):
+        skill = self.values[0]
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        # Pathfinder simplificado: usa o modificador do atributo mais próximo + proficiência se trained
+        # Mapeamento simples
+        atr_map = {
+            "Acrobatics": "dexterity", "Athletics": "strength", "Stealth": "dexterity",
+            "Thievery": "dexterity", "Arcana": "intelligence", "Crafting": "intelligence",
+            "Occultism": "intelligence", "Society": "intelligence", "Nature": "wisdom",
+            "Medicine": "wisdom", "Religion": "wisdom", "Survival": "wisdom",
+            "Deception": "charisma", "Diplomacy": "charisma", "Intimidation": "charisma",
+            "Performance": "charisma"
+        }
+        atr_nome = atr_map.get(skill, "intelligence")
+        atr = ficha[atr_nome]
+        mod = mod_atributo(atr)
+        trained = ficha["skills"].get(skill, 0)
+        prof = ficha["proficiency"] if trained else 0
+        d20 = random.randint(1, 20)
+        resultado = d20 + mod + prof
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, f"PF: {skill}", resultado, d20)
+        embed = discord.Embed(title="🎲 ROLAGEM — PATHFINDER", color=discord.Color.dark_gold())
+        embed.add_field(name="Skill", value=skill, inline=True)
+        embed.add_field(name="D20", value=str(d20), inline=True)
+        embed.add_field(name="Resultado", value=f"**{resultado}**", inline=True)
+        embed.add_field(name="Cálculo", value=f"`{d20} + {mod} (mod) + {prof} (prof) = {resultado}`", inline=False)
+        await interaction.response.edit_message(embed=embed, view=PfSistemaView())
+
+
+class PfRolagemView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+        self.add_item(PfRolarSelect())
+
+
+class PfFichaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Informações", emoji="📋", style=discord.ButtonStyle.primary)
+    async def informacoes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        await interaction.response.send_modal(PfInfoModal(ficha))
+
+    @discord.ui.button(label="Atributos", emoji="🧠", style=discord.ButtonStyle.primary)
+    async def atributos(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        await interaction.response.send_modal(PfAtributosModal(ficha))
+
+    @discord.ui.button(label="Skills", emoji="🎯", style=discord.ButtonStyle.secondary)
+    async def skills(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Clique na skill para marcar/desmarcar:", embed=None, view=PfSkillsView())
+
+    @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
+    async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_pathfinder(ficha), view=PfFichaView())
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
+class PfSistemaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
+    async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_pathfinder(ficha), view=PfFichaView())
+
+    @discord.ui.button(label="Rolar Skill", emoji="🎲", style=discord.ButtonStyle.success)
+    async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="🎲 Escolha uma skill:", embed=None, view=PfRolagemView())
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
+# ==================================================
 # SISTEMAS
 # ==================================================
 
@@ -1898,7 +2829,7 @@ class SistemasView(discord.ui.View):
     @discord.ui.button(
         label="Ordem Paranormal",
         emoji="👁️",
-        style=discord.ButtonStyle.secondary
+        style=discord.ButtonStyle.danger
     )
     async def ordem(
         self,
@@ -1906,17 +2837,22 @@ class SistemasView(discord.ui.View):
         button: discord.ui.Button
     ):
         await interaction.response.edit_message(
-            embed=criar_embed_sistema_desenvolvimento(
-                "👁️ ORDEM PARANORMAL",
-                "A integração do sistema Ordem Paranormal ainda está em desenvolvimento."
+            embed=discord.Embed(
+                title="👁️ ORDEM PARANORMAL",
+                description=(
+                    "Sistema de investigação paranormal.\n\n"
+                    "Use os botões abaixo para acessar sua ficha "
+                    "e realizar testes."
+                ),
+                color=discord.Color.dark_red()
             ),
-            view=SistemaEmDesenvolvimentoView()
+            view=OrdemSistemaView()
         )
 
     @discord.ui.button(
         label="D&D",
         emoji="🐉",
-        style=discord.ButtonStyle.secondary
+        style=discord.ButtonStyle.success
     )
     async def dnd(
         self,
@@ -1924,17 +2860,21 @@ class SistemasView(discord.ui.View):
         button: discord.ui.Button
     ):
         await interaction.response.edit_message(
-            embed=criar_embed_sistema_desenvolvimento(
-                "🐉 D&D",
-                "A integração de D&D ainda está em desenvolvimento."
+            embed=discord.Embed(
+                title="🐉 D&D 5e",
+                description=(
+                    "Sistema de fantasia clássica.\n\n"
+                    "Acesse sua ficha e faça rolagens de skill."
+                ),
+                color=discord.Color.dark_green()
             ),
-            view=SistemaEmDesenvolvimentoView()
+            view=DndSistemaView()
         )
 
     @discord.ui.button(
         label="Pathfinder",
         emoji="⚔️",
-        style=discord.ButtonStyle.secondary
+        style=discord.ButtonStyle.primary
     )
     async def pathfinder(
         self,
@@ -1942,11 +2882,15 @@ class SistemasView(discord.ui.View):
         button: discord.ui.Button
     ):
         await interaction.response.edit_message(
-            embed=criar_embed_sistema_desenvolvimento(
-                "⚔️ PATHFINDER",
-                "A integração de Pathfinder ainda está em desenvolvimento."
+            embed=discord.Embed(
+                title="⚔️ PATHFINDER",
+                description=(
+                    "Sistema de fantasia tática.\n\n"
+                    "Acesse sua ficha e faça rolagens de skill."
+                ),
+                color=discord.Color.dark_gold()
             ),
-            view=SistemaEmDesenvolvimentoView()
+            view=PfSistemaView()
         )
 
     @discord.ui.button(
@@ -2080,55 +3024,49 @@ class FichasView(discord.ui.View):
     @discord.ui.button(
         label="Ordem Paranormal",
         emoji="👁️",
-        style=discord.ButtonStyle.secondary
+        style=discord.ButtonStyle.danger
     )
     async def ordem(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
+        ficha = garantir_ficha_ordem(interaction.user.id)
         await interaction.response.edit_message(
-            embed=criar_embed_sistema_desenvolvimento(
-                "👁️ FICHA — ORDEM PARANORMAL",
-                "As fichas de Ordem Paranormal ainda estão em desenvolvimento."
-            ),
-            view=FichaEmDesenvolvimentoView()
+            embed=criar_embed_ficha_ordem(ficha),
+            view=OrdemFichaView()
         )
 
     @discord.ui.button(
         label="D&D",
         emoji="🐉",
-        style=discord.ButtonStyle.secondary
+        style=discord.ButtonStyle.success
     )
     async def dnd(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
+        ficha = garantir_ficha_dnd(interaction.user.id)
         await interaction.response.edit_message(
-            embed=criar_embed_sistema_desenvolvimento(
-                "🐉 FICHA — D&D",
-                "As fichas de D&D ainda estão em desenvolvimento."
-            ),
-            view=FichaEmDesenvolvimentoView()
+            embed=criar_embed_ficha_dnd(ficha),
+            view=DndFichaView()
         )
 
     @discord.ui.button(
         label="Pathfinder",
         emoji="⚔️",
-        style=discord.ButtonStyle.secondary
+        style=discord.ButtonStyle.primary
     )
     async def pathfinder(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
+        ficha = garantir_ficha_pathfinder(interaction.user.id)
         await interaction.response.edit_message(
-            embed=criar_embed_sistema_desenvolvimento(
-                "⚔️ FICHA — PATHFINDER",
-                "As fichas de Pathfinder ainda estão em desenvolvimento."
-            ),
-            view=FichaEmDesenvolvimentoView()
+            embed=criar_embed_ficha_pathfinder(ficha),
+            view=PfFichaView()
         )
 
     @discord.ui.button(
