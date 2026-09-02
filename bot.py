@@ -2347,43 +2347,35 @@ def criar_embed_ficha_fatal(ficha):
 # BRUTAL (Slasher)
 # ==================================================
 
-BRUTAL_ATRIBUTOS = ["Força", "Agilidade", "Astúcia", "Coragem", "Resistência"]
-
-BRUTAL_PERICIAS = [
-    "Atletismo", "Briga", "Furtividade", "Investigação",
-    "Medicina", "Percepção", "Persuasão", "Sobrevivência",
-    "Intimidação", "Tecnologia", "Armas", "Esconder"
-]
-
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS fichas_brutal (
     user_id INTEGER PRIMARY KEY,
     nome TEXT DEFAULT '',
-    idade TEXT DEFAULT '',
-    ocupacao TEXT DEFAULT '',
-    forca INTEGER DEFAULT 2,
-    agilidade INTEGER DEFAULT 2,
-    astucia INTEGER DEFAULT 2,
-    coragem INTEGER DEFAULT 2,
-    resistencia INTEGER DEFAULT 2,
-    stress INTEGER DEFAULT 0,
-    stress_max INTEGER DEFAULT 5,
-    ferimentos INTEGER DEFAULT 0,
-    pericias TEXT DEFAULT '{}'
+    pronomes TEXT DEFAULT '',
+    interprete TEXT DEFAULT '',
+    arquetipo TEXT DEFAULT '',
+    agilidade INTEGER DEFAULT 0,
+    astucia INTEGER DEFAULT 0,
+    forca INTEGER DEFAULT 0,
+    carisma INTEGER DEFAULT 0,
+    vigor INTEGER DEFAULT 0,
+    pilha_dados INTEGER DEFAULT 0,
+    pilha_fuga INTEGER DEFAULT 0,
+    feridas INTEGER DEFAULT 0,
+    sequelas TEXT DEFAULT '',
+    habilidades TEXT DEFAULT '',
+    aparencia TEXT DEFAULT '',
+    vantagens_gerais TEXT DEFAULT '',
+    vantagens_especialidade TEXT DEFAULT ''
 )
 """)
 db.commit()
 
 
-def criar_pericias_brutal():
-    return {p: 0 for p in BRUTAL_PERICIAS}
-
-
 def criar_ficha_brutal(user_id):
     cursor.execute("""
-        INSERT OR IGNORE INTO fichas_brutal (user_id, pericias)
-        VALUES (?, ?)
-    """, (user_id, json.dumps(criar_pericias_brutal(), ensure_ascii=False)))
+        INSERT OR IGNORE INTO fichas_brutal (user_id) VALUES (?)
+    """, (user_id,))
     db.commit()
 
 
@@ -2392,52 +2384,61 @@ def garantir_ficha_brutal(user_id):
     cursor.execute("SELECT * FROM fichas_brutal WHERE user_id = ?", (user_id,))
     linha = cursor.fetchone()
     colunas = [d[0] for d in cursor.description]
-    ficha = dict(zip(colunas, linha))
-    try:
-        ficha["pericias"] = json.loads(ficha["pericias"] or "{}")
-    except:
-        ficha["pericias"] = criar_pericias_brutal()
-    for p in BRUTAL_PERICIAS:
-        ficha["pericias"].setdefault(p, 0)
-    return ficha
+    return dict(zip(colunas, linha))
 
 
 def criar_embed_ficha_brutal(ficha):
     embed = discord.Embed(
-        title="🔪 FICHA — BRUTAL (Slasher)",
+        title="🔪 FICHA — BRUTAL",
         description=f"**{ficha['nome'] or 'Sem nome'}**",
         color=discord.Color.dark_red()
     )
+
     embed.add_field(
         name="📋 Informações",
         value=(
-            f"**Idade:** {ficha['idade'] or '—'}\n"
-            f"**Ocupação:** {ficha['ocupacao'] or '—'}"
+            f"**Pronomes:** {ficha['pronomes'] or '—'}\n"
+            f"**Intérprete:** {ficha['interprete'] or '—'}\n"
+            f"**Arquétipo:** {ficha['arquetipo'] or '—'}"
         ),
         inline=False
     )
+
     embed.add_field(
         name="🩸 Atributos",
         value=(
-            f"**Força:** `{ficha['forca']}`\n"
             f"**Agilidade:** `{ficha['agilidade']}`\n"
             f"**Astúcia:** `{ficha['astucia']}`\n"
-            f"**Coragem:** `{ficha['coragem']}`\n"
-            f"**Resistência:** `{ficha['resistencia']}`"
+            f"**Força:** `{ficha['forca']}`\n"
+            f"**Carisma:** `{ficha['carisma']}`\n"
+            f"**Vigor:** `{ficha['vigor']}`"
         ),
         inline=True
     )
+
     embed.add_field(
-        name="😰 Estado",
+        name="📦 Pilhas & Feridas",
         value=(
-            f"**Stress:** `{ficha['stress']}/{ficha['stress_max']}`\n"
-            f"**Ferimentos:** `{ficha['ferimentos']}`"
+            f"**Pilha de Dados:** `{ficha['pilha_dados']}`\n"
+            f"**Pilha de Fuga:** `{ficha['pilha_fuga']}`\n"
+            f"**Feridas:** `{ficha['feridas']}`\n"
+            f"**Sequelas:** {ficha['sequelas'] or '—'}"
         ),
         inline=True
     )
-    trained = {k: v for k, v in ficha["pericias"].items() if v != 0}
-    texto = "\n".join(f"**{k}:** `{v:+d}`" for k, v in sorted(trained.items())) if trained else "Nenhuma perícia treinada."
-    embed.add_field(name="🎯 Perícias", value=texto[:1024], inline=False)
+
+    if ficha.get("habilidades"):
+        embed.add_field(name="🎯 Habilidades", value=ficha["habilidades"][:1024], inline=False)
+
+    if ficha.get("vantagens_gerais"):
+        embed.add_field(name="⭐ Vantagens Gerais", value=ficha["vantagens_gerais"][:1024], inline=False)
+
+    if ficha.get("vantagens_especialidade"):
+        embed.add_field(name="💎 Vantagens de Especialidade", value=ficha["vantagens_especialidade"][:1024], inline=False)
+
+    if ficha.get("aparencia"):
+        embed.add_field(name="🖼️ Aparência", value=ficha["aparencia"][:1024], inline=False)
+
     embed.set_footer(text="Brutal • Sobreviva... se conseguir")
     return embed
 
@@ -2640,15 +2641,17 @@ class BrutalInfoModal(discord.ui.Modal):
         super().__init__(title="🔪 Informações — Brutal")
         f = ficha or {}
         self.nome = discord.ui.TextInput(label="Nome", required=False, max_length=100, default=f.get("nome", ""))
-        self.idade = discord.ui.TextInput(label="Idade", required=False, max_length=20, default=f.get("idade", ""))
-        self.ocupacao = discord.ui.TextInput(label="Ocupação", required=False, max_length=100, default=f.get("ocupacao", ""))
-        for item in [self.nome, self.idade, self.ocupacao]:
+        self.pronomes = discord.ui.TextInput(label="Pronomes", required=False, max_length=50, default=f.get("pronomes", ""))
+        self.interprete = discord.ui.TextInput(label="Intérprete", required=False, max_length=100, default=f.get("interprete", ""))
+        self.arquetipo = discord.ui.TextInput(label="Arquétipo", required=False, max_length=100, default=f.get("arquetipo", ""))
+        for item in [self.nome, self.pronomes, self.interprete, self.arquetipo]:
             self.add_item(item)
 
     async def on_submit(self, interaction: discord.Interaction):
         garantir_ficha_brutal(interaction.user.id)
-        cursor.execute("UPDATE fichas_brutal SET nome=?, idade=?, ocupacao=? WHERE user_id=?",
-                       (self.nome.value, self.idade.value, self.ocupacao.value, interaction.user.id))
+        cursor.execute("""
+            UPDATE fichas_brutal SET nome=?, pronomes=?, interprete=?, arquetipo=? WHERE user_id=?
+        """, (self.nome.value, self.pronomes.value, self.interprete.value, self.arquetipo.value, interaction.user.id))
         db.commit()
         ficha = garantir_ficha_brutal(interaction.user.id)
         await interaction.response.edit_message(embed=criar_embed_ficha_brutal(ficha), view=BrutalFichaView())
@@ -2658,25 +2661,75 @@ class BrutalAtributosModal(discord.ui.Modal):
     def __init__(self, ficha=None):
         super().__init__(title="🩸 Atributos — Brutal")
         f = ficha or {}
-        self.forca = discord.ui.TextInput(label="Força", required=True, default=str(f.get("forca", 2)))
-        self.agilidade = discord.ui.TextInput(label="Agilidade", required=True, default=str(f.get("agilidade", 2)))
-        self.astucia = discord.ui.TextInput(label="Astúcia", required=True, default=str(f.get("astucia", 2)))
-        self.coragem = discord.ui.TextInput(label="Coragem", required=True, default=str(f.get("coragem", 2)))
-        self.resistencia = discord.ui.TextInput(label="Resistência", required=True, default=str(f.get("resistencia", 2)))
-        for item in [self.forca, self.agilidade, self.astucia, self.coragem, self.resistencia]:
+        self.agilidade = discord.ui.TextInput(label="Agilidade", required=True, default=str(f.get("agilidade", 0)))
+        self.astucia = discord.ui.TextInput(label="Astúcia", required=True, default=str(f.get("astucia", 0)))
+        self.forca = discord.ui.TextInput(label="Força", required=True, default=str(f.get("forca", 0)))
+        self.carisma = discord.ui.TextInput(label="Carisma", required=True, default=str(f.get("carisma", 0)))
+        self.vigor = discord.ui.TextInput(label="Vigor", required=True, default=str(f.get("vigor", 0)))
+        for item in [self.agilidade, self.astucia, self.forca, self.carisma, self.vigor]:
             self.add_item(item)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            vals = [int(x.value) for x in [self.forca, self.agilidade, self.astucia, self.coragem, self.resistencia]]
+            vals = [int(x.value) for x in [self.agilidade, self.astucia, self.forca, self.carisma, self.vigor]]
         except ValueError:
             await interaction.response.send_message("❌ Atributos precisam ser números.", ephemeral=True)
             return
         garantir_ficha_brutal(interaction.user.id)
         cursor.execute("""
-            UPDATE fichas_brutal SET forca=?, agilidade=?, astucia=?, coragem=?, resistencia=?
-            WHERE user_id=?
+            UPDATE fichas_brutal SET agilidade=?, astucia=?, forca=?, carisma=?, vigor=? WHERE user_id=?
         """, (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_brutal(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_brutal(ficha), view=BrutalFichaView())
+
+
+class BrutalEstadoModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="📦 Pilhas & Feridas — Brutal")
+        f = ficha or {}
+        self.pilha_dados = discord.ui.TextInput(label="Pilha de Dados", required=True, default=str(f.get("pilha_dados", 0)))
+        self.pilha_fuga = discord.ui.TextInput(label="Pilha de Fuga", required=True, default=str(f.get("pilha_fuga", 0)))
+        self.feridas = discord.ui.TextInput(label="Feridas", required=True, default=str(f.get("feridas", 0)))
+        self.sequelas = discord.ui.TextInput(label="Sequelas", required=False, max_length=200, default=f.get("sequelas", ""))
+        for item in [self.pilha_dados, self.pilha_fuga, self.feridas, self.sequelas]:
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            pd = int(self.pilha_dados.value)
+            pf = int(self.pilha_fuga.value)
+            fe = int(self.feridas.value)
+        except ValueError:
+            await interaction.response.send_message("❌ Pilhas e Feridas precisam ser números.", ephemeral=True)
+            return
+        garantir_ficha_brutal(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_brutal SET pilha_dados=?, pilha_fuga=?, feridas=?, sequelas=? WHERE user_id=?
+        """, (pd, pf, fe, self.sequelas.value, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_brutal(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_brutal(ficha), view=BrutalFichaView())
+
+
+class BrutalTextoModal(discord.ui.Modal):
+    def __init__(self, campo, titulo, ficha=None):
+        super().__init__(title=titulo)
+        self.campo = campo
+        f = ficha or {}
+        self.texto = discord.ui.TextInput(
+            label=titulo,
+            style=discord.TextStyle.paragraph,
+            required=False,
+            max_length=1000,
+            default=f.get(campo, "")
+        )
+        self.add_item(self.texto)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        garantir_ficha_brutal(interaction.user.id)
+        cursor.execute(f"UPDATE fichas_brutal SET {self.campo}=? WHERE user_id=?",
+                       (self.texto.value, interaction.user.id))
         db.commit()
         ficha = garantir_ficha_brutal(interaction.user.id)
         await interaction.response.edit_message(embed=criar_embed_ficha_brutal(ficha), view=BrutalFichaView())
@@ -2695,6 +2748,31 @@ class BrutalFichaView(discord.ui.View):
     async def atributos(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_brutal(interaction.user.id)
         await interaction.response.send_modal(BrutalAtributosModal(ficha))
+
+    @discord.ui.button(label="Estado", emoji="📦", style=discord.ButtonStyle.primary)
+    async def estado(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_brutal(interaction.user.id)
+        await interaction.response.send_modal(BrutalEstadoModal(ficha))
+
+    @discord.ui.button(label="Habilidades", emoji="🎯", style=discord.ButtonStyle.secondary)
+    async def habilidades(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_brutal(interaction.user.id)
+        await interaction.response.send_modal(BrutalTextoModal("habilidades", "🎯 Habilidades", ficha))
+
+    @discord.ui.button(label="Vantagens", emoji="⭐", style=discord.ButtonStyle.secondary)
+    async def vantagens(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_brutal(interaction.user.id)
+        await interaction.response.send_modal(BrutalTextoModal("vantagens_gerais", "⭐ Vantagens Gerais", ficha))
+
+    @discord.ui.button(label="Especialidade", emoji="💎", style=discord.ButtonStyle.secondary)
+    async def especialidade(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_brutal(interaction.user.id)
+        await interaction.response.send_modal(BrutalTextoModal("vantagens_especialidade", "💎 Vantagens de Especialidade", ficha))
+
+    @discord.ui.button(label="Aparência", emoji="🖼️", style=discord.ButtonStyle.secondary)
+    async def aparencia(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_brutal(interaction.user.id)
+        await interaction.response.send_modal(BrutalTextoModal("aparencia", "🖼️ Aparência", ficha))
 
     @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
     async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2760,27 +2838,42 @@ class KidsInfoModal(discord.ui.Modal):
         await interaction.response.edit_message(embed=criar_embed_ficha_kids(ficha), view=KidsFichaView())
 
 
-class KidsAtributosModal(discord.ui.Modal):
+class KidsAtributosModal1(discord.ui.Modal):
     def __init__(self, ficha=None):
-        super().__init__(title="🎲 Atributos — Kids on Bikes")
+        super().__init__(title="🎲 Atributos 1/2 — Kids")
         f = ficha or {}
         self.fear = discord.ui.TextInput(label="Fear (ex: d6)", required=True, default=f.get("fear", "d6"))
         self.fight = discord.ui.TextInput(label="Fight", required=True, default=f.get("fight", "d6"))
         self.flight = discord.ui.TextInput(label="Flight", required=True, default=f.get("flight", "d6"))
         self.charm = discord.ui.TextInput(label="Charm", required=True, default=f.get("charm", "d6"))
-        self.grit = discord.ui.TextInput(label="Grit", required=True, default=f.get("grit", "d6"))
-        self.brains = discord.ui.TextInput(label="Brains", required=True, default=f.get("brains", "d6"))
-        self.brawn = discord.ui.TextInput(label="Brawn", required=True, default=f.get("brawn", "d6"))
-        for item in [self.fear, self.fight, self.flight, self.charm, self.grit, self.brains, self.brawn]:
+        for item in [self.fear, self.fight, self.flight, self.charm]:
             self.add_item(item)
 
     async def on_submit(self, interaction: discord.Interaction):
         garantir_ficha_kids(interaction.user.id)
         cursor.execute("""
-            UPDATE fichas_kids SET fear=?, fight=?, flight=?, charm=?, grit=?, brains=?, brawn=?
-            WHERE user_id=?
-        """, (self.fear.value, self.fight.value, self.flight.value, self.charm.value,
-              self.grit.value, self.brains.value, self.brawn.value, interaction.user.id))
+            UPDATE fichas_kids SET fear=?, fight=?, flight=?, charm=? WHERE user_id=?
+        """, (self.fear.value, self.fight.value, self.flight.value, self.charm.value, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_kids(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_kids(ficha), view=KidsFichaView())
+
+
+class KidsAtributosModal2(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🎲 Atributos 2/2 — Kids")
+        f = ficha or {}
+        self.grit = discord.ui.TextInput(label="Grit", required=True, default=f.get("grit", "d6"))
+        self.brains = discord.ui.TextInput(label="Brains", required=True, default=f.get("brains", "d6"))
+        self.brawn = discord.ui.TextInput(label="Brawn", required=True, default=f.get("brawn", "d6"))
+        for item in [self.grit, self.brains, self.brawn]:
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        garantir_ficha_kids(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_kids SET grit=?, brains=?, brawn=? WHERE user_id=?
+        """, (self.grit.value, self.brains.value, self.brawn.value, interaction.user.id))
         db.commit()
         ficha = garantir_ficha_kids(interaction.user.id)
         await interaction.response.edit_message(embed=criar_embed_ficha_kids(ficha), view=KidsFichaView())
@@ -2795,10 +2888,15 @@ class KidsFichaView(discord.ui.View):
         ficha = garantir_ficha_kids(interaction.user.id)
         await interaction.response.send_modal(KidsInfoModal(ficha))
 
-    @discord.ui.button(label="Atributos", emoji="🎲", style=discord.ButtonStyle.primary)
-    async def atributos(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Atributos 1/2", emoji="🎲", style=discord.ButtonStyle.primary)
+    async def atributos1(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_kids(interaction.user.id)
-        await interaction.response.send_modal(KidsAtributosModal(ficha))
+        await interaction.response.send_modal(KidsAtributosModal1(ficha))
+
+    @discord.ui.button(label="Atributos 2/2", emoji="🎲", style=discord.ButtonStyle.primary)
+    async def atributos2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_kids(interaction.user.id)
+        await interaction.response.send_modal(KidsAtributosModal2(ficha))
 
     @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
     async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
