@@ -507,6 +507,24 @@ def calcular_recursos_ordem(nex, vigor, presenca):
     return pv_max, pe_max, san_max
 
 
+def pontos_atributo_ordem(nex):
+    """Retorna o máximo de pontos de atributo permitidos pelo NEX.
+    Base: 5 (1 em cada atributo).
+    Ganha +1 em NEX 20, 50, 80 e 90.
+    """
+    nex = int(nex or 5)
+    pontos = 5  # base (1 em cada)
+    if nex >= 20:
+        pontos += 1
+    if nex >= 50:
+        pontos += 1
+    if nex >= 80:
+        pontos += 1
+    if nex >= 90:
+        pontos += 1
+    return pontos
+
+
 def criar_ficha_ordem(user_id):
     pericias = criar_pericias_ordem()
     pv_max, pe_max, san_max = calcular_recursos_ordem(5, 1, 1)
@@ -551,6 +569,10 @@ def criar_embed_ficha_ordem(ficha):
         ),
         inline=False
     )
+    total_atr = (ficha['agilidade'] + ficha['forca'] + ficha['intelecto'] +
+                 ficha['presenca'] + ficha['vigor'])
+    max_atr = pontos_atributo_ordem(ficha['nex'])
+
     embed.add_field(
         name="🧠 Atributos",
         value=(
@@ -558,7 +580,9 @@ def criar_embed_ficha_ordem(ficha):
             f"**FOR:** `{ficha['forca']}`\n"
             f"**INT:** `{ficha['intelecto']}`\n"
             f"**PRE:** `{ficha['presenca']}`\n"
-            f"**VIG:** `{ficha['vigor']}`"
+            f"**VIG:** `{ficha['vigor']}`\n"
+            f"────────\n"
+            f"**Pontos:** `{total_atr}/{max_atr}`"
         ),
         inline=True
     )
@@ -1295,111 +1319,60 @@ def eh_pesquisador(interaction):
 class CriarNPCModal(discord.ui.Modal):
 
     def __init__(self):
-        super().__init__(
-            title="🛡️ Criar NPC / Boss"
-        )
+        super().__init__(title="🛡️ Criar NPC / Boss")
 
-        self.nome = discord.ui.TextInput(
-            label="Nome",
-            required=True,
-            max_length=100
-        )
-
-        self.tipo = discord.ui.TextInput(
-            label="Tipo",
-            placeholder="NPC ou Boss",
-            required=True,
-            max_length=20
-        )
-
-        self.vida = discord.ui.TextInput(
-            label="Vida",
-            placeholder="Ex: 100",
-            required=True,
-            max_length=10
-        )
-
-        self.fisico = discord.ui.TextInput(
-            label="Físico",
-            placeholder="Ex: 5",
-            required=True,
-            max_length=5
-        )
-
-        self.atletismo = discord.ui.TextInput(
-            label="Atletismo",
-            placeholder="Ex: 4",
-            required=True,
-            max_length=5
-        )
+        self.nome = discord.ui.TextInput(label="Nome", required=True, max_length=100)
+        self.tipo = discord.ui.TextInput(label="Tipo", placeholder="NPC, Boss, Inimigo...", required=True, max_length=30)
+        self.vida = discord.ui.TextInput(label="Vida / PV", placeholder="Ex: 100", required=True, max_length=10)
+        self.sistema = discord.ui.TextInput(label="Sistema", placeholder="Tavelada, Ordem, D&D, Brutal...", required=False, max_length=30)
+        self.notas = discord.ui.TextInput(label="Notas / Atributos extras", style=discord.TextStyle.paragraph, required=False, max_length=1000)
 
         self.add_item(self.nome)
         self.add_item(self.tipo)
         self.add_item(self.vida)
-        self.add_item(self.fisico)
-        self.add_item(self.atletismo)
+        self.add_item(self.sistema)
+        self.add_item(self.notas)
 
     async def on_submit(self, interaction):
         if not eh_pesquisador(interaction):
-            await interaction.response.send_message(
-                "🔒 Apenas Pesquisadores podem criar NPCs.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("🔒 Apenas Pesquisadores podem criar NPCs.", ephemeral=True)
             return
 
         try:
             vida = int(self.vida.value)
-            fisico = int(self.fisico.value)
-            atletismo = int(self.atletismo.value)
-
         except ValueError:
-            await interaction.response.send_message(
-                "❌ Vida, Físico e Atletismo precisam ser números.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Vida precisa ser um número.", ephemeral=True)
             return
 
-        if vida < 0 or fisico < 0 or atletismo < 0:
-            await interaction.response.send_message(
-                "❌ Os valores não podem ser negativos.",
-                ephemeral=True
-            )
+        if vida < 0:
+            await interaction.response.send_message("❌ Vida não pode ser negativa.", ephemeral=True)
             return
 
-        pericias = criar_pericias()
+        # Garante colunas extras
+        for col, tipo in [("sistema", "TEXT DEFAULT ''"), ("notas", "TEXT DEFAULT ''")]:
+            try:
+                cursor.execute(f"ALTER TABLE npcs ADD COLUMN {col} {tipo}")
+                db.commit()
+            except:
+                pass
 
-        pericias["Físico:Atletismo"] = atletismo
-
-        cursor.execute(
-            """
-            INSERT INTO npcs (
-                nome,
-                tipo,
-                vida,
-                fisico,
-                pericias
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                self.nome.value,
-                self.tipo.value,
-                vida,
-                fisico,
-                json.dumps(
-                    pericias,
-                    ensure_ascii=False
-                )
-            )
-        )
-
+        cursor.execute("""
+            INSERT INTO npcs (nome, tipo, vida, fisico, pericias, sistema, notas)
+            VALUES (?, ?, ?, 0, '{}', ?, ?)
+        """, (
+            self.nome.value,
+            self.tipo.value,
+            vida,
+            self.sistema.value or "Geral",
+            self.notas.value or ""
+        ))
         db.commit()
 
         await interaction.response.send_message(
-            f"🛡️ **{self.nome.value}** criado com sucesso!\n\n"
+            f"🛡️ **{self.nome.value}** criado!\n\n"
             f"❤️ Vida: **{vida}**\n"
-            f"⚔️ Físico: **{fisico}**\n"
-            f"🏃 Atletismo: **{atletismo}**",
+            f"📜 Sistema: **{self.sistema.value or 'Geral'}**\n"
+            f"📝 Notas: {self.notas.value or '—'}",
             ephemeral=True
         )
 
@@ -1409,41 +1382,41 @@ class CriarNPCModal(discord.ui.Modal):
 # ==================================================
 
 async def listar_npcs(interaction):
-    cursor.execute(
-        """
-        SELECT id, nome, tipo, vida, fisico
-        FROM npcs
-        ORDER BY id
-        """
-    )
+    try:
+        cursor.execute("SELECT id, nome, tipo, vida, sistema, notas FROM npcs ORDER BY id")
+    except:
+        cursor.execute("SELECT id, nome, tipo, vida, fisico FROM npcs ORDER BY id")
+        npcs = cursor.fetchall()
+        if not npcs:
+            await interaction.response.send_message("🛡️ Nenhum NPC/Boss criado ainda.", ephemeral=True)
+            return
+        texto = ""
+        for row in npcs:
+            texto += f"**#{row[0]} — {row[1]}**\n{row[2]} • ❤️ {row[3]}\n\n"
+        embed = discord.Embed(title="🛡️ NPCs / BOSSES", description=texto[:4096], color=discord.Color.dark_red())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
 
     npcs = cursor.fetchall()
 
     if not npcs:
-        await interaction.response.send_message(
-            "🛡️ Você ainda não possui nenhum NPC ou Boss.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("🛡️ Nenhum NPC/Boss criado ainda.", ephemeral=True)
         return
 
     texto = ""
+    for row in npcs:
+        npc_id, nome, tipo, vida, sistema, notas = row
+        texto += f"**#{npc_id} — {nome}**\n"
+        texto += f"{tipo} • ❤️ {vida}"
+        if sistema:
+            texto += f" • 📜 {sistema}"
+        texto += "\n"
+        if notas:
+            texto += f"📝 {notas[:80]}{'...' if len(notas) > 80 else ''}\n"
+        texto += "\n"
 
-    for npc_id, nome, tipo, vida, fisico in npcs:
-        texto += (
-            f"**#{npc_id} — {nome}**\n"
-            f"{tipo} • ❤️ {vida} • ⚔️ Físico {fisico}\n\n"
-        )
-
-    embed = discord.Embed(
-        title="🛡️ NPCs / BOSSES",
-        description=texto[:4096],
-        color=discord.Color.dark_red()
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
-    )
+    embed = discord.Embed(title="🛡️ NPCs / BOSSES", description=texto[:4096], color=discord.Color.dark_red())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ==================================================
@@ -2128,66 +2101,64 @@ class NPCSelect(discord.ui.Select):
 class EscudoMestre(discord.ui.View):
 
     def __init__(self):
-        super().__init__(
-            timeout=None
-        )
+        super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="NPCs / Bosses",
-        emoji="🛡️",
-        style=discord.ButtonStyle.danger
-    )
-    async def npcs(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    @discord.ui.button(label="NPCs / Bosses", emoji="🛡️", style=discord.ButtonStyle.danger)
+    async def npcs(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not eh_pesquisador(interaction):
-            await interaction.response.send_message(
-                "🔒 Apenas Pesquisadores possuem acesso.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("🔒 Apenas Pesquisadores possuem acesso.", ephemeral=True)
             return
-
         embed = discord.Embed(
-            title="🛡️ MODO BOSS",
-            description=(
-                "Área secreta dos Pesquisadores.\n\n"
-                "Aqui você administra NPCs e Bosses."
-            ),
+            title="🛡️ NPCs / BOSSES",
+            description="Crie e gerencie NPCs de **qualquer sistema**.\nUse o campo Sistema e Notas para atributos extras.",
             color=discord.Color.dark_red()
         )
+        await interaction.response.send_message(embed=embed, view=BossView(), ephemeral=True)
 
-        await interaction.response.send_message(
-            embed=embed,
-            view=BossView(),
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="Iniciar Combate",
-        emoji="⚔️",
-        style=discord.ButtonStyle.success
-    )
-    async def combate(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    @discord.ui.button(label="Iniciar Combate", emoji="⚔️", style=discord.ButtonStyle.success)
+    async def combate(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not eh_pesquisador(interaction):
-            await interaction.response.send_message(
-                "🔒 Apenas Pesquisadores podem iniciar combates.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("🔒 Apenas Pesquisadores podem iniciar combates.", ephemeral=True)
             return
-
         iniciar_combate()
+        await interaction.response.send_message(embed=criar_embed_combate(), view=CombateMestreView(), ephemeral=True)
 
+    @discord.ui.button(label="Dar XP", emoji="⭐", style=discord.ButtonStyle.primary)
+    async def dar_xp_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
         await interaction.response.send_message(
-            embed=criar_embed_combate(),
-            view=CombateMestreView(),
+            "⭐ Use o comando `/darxp @jogador quantidade` para conceder XP (Tavelada).",
             ephemeral=True
         )
+
+    @discord.ui.button(label="Sistemas Custom", emoji="🧩", style=discord.ButtonStyle.secondary)
+    async def sistemas_custom(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="🧩 Sistemas da Comunidade",
+                description="Veja ou gerencie sistemas criados pelos jogadores.\nJogadores criam em **Sistemas → Criar Sistema**.",
+                color=discord.Color.purple()
+            ),
+            view=CustomSistemasMestreView(),
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="Anotações da Mesa", emoji="📝", style=discord.ButtonStyle.secondary)
+    async def anotacoes_mesa(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        garantir_anotacoes_mesa()
+        cursor.execute("SELECT texto FROM anotacoes_mesa WHERE id = 1")
+        row = cursor.fetchone()
+        texto = (row[0] if row else "") or "Nenhuma anotação ainda."
+        embed = discord.Embed(title="📝 Anotações da Mesa", description=texto[:4000], color=discord.Color.dark_grey())
+        await interaction.response.send_message(embed=embed, view=AnotacoesMesaView(), ephemeral=True)
 
 
 # ==================================================
@@ -2242,105 +2213,6 @@ class BossView(discord.ui.View):
         await listar_npcs(
             interaction
         )
-
-
-# ==================================================
-# FATAL RPG
-# ==================================================
-
-FATAL_ATRIBUTOS = ["Força", "Habilidade", "Resistência", "Armadura", "Poder de Fogo", "Magia"]
-
-FATAL_PERICIAS = [
-    "Acrobacia", "Adestramento", "Artes", "Atletismo", "Ciências",
-    "Crime", "Diplomacia", "Enganação", "Fortitude", "Furtividade",
-    "Intimidação", "Intuição", "Investigação", "Luta", "Medicina",
-    "Ocultismo", "Percepção", "Pilotagem", "Pontaria", "Profissão",
-    "Reflexos", "Religião", "Sobrevivência", "Tática", "Tecnologia"
-]
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS fichas_fatal (
-    user_id INTEGER PRIMARY KEY,
-    nome TEXT DEFAULT '',
-    conceito TEXT DEFAULT '',
-    nivel INTEGER DEFAULT 1,
-    forca INTEGER DEFAULT 0,
-    habilidade INTEGER DEFAULT 0,
-    resistencia INTEGER DEFAULT 0,
-    armadura INTEGER DEFAULT 0,
-    poder_fogo INTEGER DEFAULT 0,
-    magia INTEGER DEFAULT 0,
-    pv INTEGER DEFAULT 0,
-    pv_max INTEGER DEFAULT 0,
-    pericias TEXT DEFAULT '{}'
-)
-""")
-db.commit()
-
-
-def criar_pericias_fatal():
-    return {p: 0 for p in FATAL_PERICIAS}
-
-
-def criar_ficha_fatal(user_id):
-    cursor.execute("""
-        INSERT OR IGNORE INTO fichas_fatal (user_id, pv, pv_max, pericias)
-        VALUES (?, 10, 10, ?)
-    """, (user_id, json.dumps(criar_pericias_fatal(), ensure_ascii=False)))
-    db.commit()
-
-
-def garantir_ficha_fatal(user_id):
-    criar_ficha_fatal(user_id)
-    cursor.execute("SELECT * FROM fichas_fatal WHERE user_id = ?", (user_id,))
-    linha = cursor.fetchone()
-    colunas = [d[0] for d in cursor.description]
-    ficha = dict(zip(colunas, linha))
-    try:
-        ficha["pericias"] = json.loads(ficha["pericias"] or "{}")
-    except:
-        ficha["pericias"] = criar_pericias_fatal()
-    for p in FATAL_PERICIAS:
-        ficha["pericias"].setdefault(p, 0)
-    return ficha
-
-
-def criar_embed_ficha_fatal(ficha):
-    embed = discord.Embed(
-        title="💀 FICHA — FATAL RPG",
-        description=f"**{ficha['nome'] or 'Sem nome'}**",
-        color=discord.Color.dark_grey()
-    )
-    embed.add_field(
-        name="📋 Informações",
-        value=(
-            f"**Conceito:** {ficha['conceito'] or '—'}\n"
-            f"**Nível:** `{ficha['nivel']}`"
-        ),
-        inline=False
-    )
-    embed.add_field(
-        name="⚔️ Atributos",
-        value=(
-            f"**Força:** `{ficha['forca']}`\n"
-            f"**Habilidade:** `{ficha['habilidade']}`\n"
-            f"**Resistência:** `{ficha['resistencia']}`\n"
-            f"**Armadura:** `{ficha['armadura']}`\n"
-            f"**Poder de Fogo:** `{ficha['poder_fogo']}`\n"
-            f"**Magia:** `{ficha['magia']}`"
-        ),
-        inline=True
-    )
-    embed.add_field(
-        name="❤️ Recursos",
-        value=f"**PV:** `{ficha['pv']}/{ficha['pv_max']}`",
-        inline=True
-    )
-    trained = {k: v for k, v in ficha["pericias"].items() if v != 0}
-    texto = "\n".join(f"**{k}:** `{v:+d}`" for k, v in sorted(trained.items())) if trained else "Nenhuma perícia treinada."
-    embed.add_field(name="🎯 Perícias", value=texto[:1024], inline=False)
-    embed.set_footer(text="Fatal RPG • Ficha privada")
-    return embed
 
 
 # ==================================================
@@ -2529,110 +2401,6 @@ def criar_embed_ficha_kids(ficha):
 
 
 # ==================================================
-# UI — FATAL RPG
-# ==================================================
-
-class FatalInfoModal(discord.ui.Modal):
-    def __init__(self, ficha=None):
-        super().__init__(title="💀 Informações — Fatal")
-        f = ficha or {}
-        self.nome = discord.ui.TextInput(label="Nome", required=False, max_length=100, default=f.get("nome", ""))
-        self.conceito = discord.ui.TextInput(label="Conceito", required=False, max_length=150, default=f.get("conceito", ""))
-        self.nivel = discord.ui.TextInput(label="Nível", required=False, default=str(f.get("nivel", 1)))
-        for item in [self.nome, self.conceito, self.nivel]:
-            self.add_item(item)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            nivel = int(self.nivel.value or 1)
-        except:
-            nivel = 1
-        garantir_ficha_fatal(interaction.user.id)
-        cursor.execute("UPDATE fichas_fatal SET nome=?, conceito=?, nivel=? WHERE user_id=?",
-                       (self.nome.value, self.conceito.value, nivel, interaction.user.id))
-        db.commit()
-        ficha = garantir_ficha_fatal(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_fatal(ficha), view=FatalFichaView())
-
-
-class FatalAtributosModal(discord.ui.Modal):
-    def __init__(self, ficha=None):
-        super().__init__(title="⚔️ Atributos — Fatal")
-        f = ficha or {}
-        self.forca = discord.ui.TextInput(label="Força", required=True, default=str(f.get("forca", 0)))
-        self.habilidade = discord.ui.TextInput(label="Habilidade", required=True, default=str(f.get("habilidade", 0)))
-        self.resistencia = discord.ui.TextInput(label="Resistência", required=True, default=str(f.get("resistencia", 0)))
-        self.armadura = discord.ui.TextInput(label="Armadura", required=True, default=str(f.get("armadura", 0)))
-        self.poder_fogo = discord.ui.TextInput(label="Poder de Fogo", required=True, default=str(f.get("poder_fogo", 0)))
-        self.magia = discord.ui.TextInput(label="Magia", required=True, default=str(f.get("magia", 0)))
-        for item in [self.forca, self.habilidade, self.resistencia, self.armadura, self.poder_fogo, self.magia]:
-            self.add_item(item)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            vals = [int(x.value) for x in [self.forca, self.habilidade, self.resistencia, self.armadura, self.poder_fogo, self.magia]]
-        except ValueError:
-            await interaction.response.send_message("❌ Atributos precisam ser números.", ephemeral=True)
-            return
-        garantir_ficha_fatal(interaction.user.id)
-        cursor.execute("""
-            UPDATE fichas_fatal SET forca=?, habilidade=?, resistencia=?, armadura=?, poder_fogo=?, magia=?
-            WHERE user_id=?
-        """, (*vals, interaction.user.id))
-        db.commit()
-        ficha = garantir_ficha_fatal(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_fatal(ficha), view=FatalFichaView())
-
-
-class FatalFichaView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=300)
-
-    @discord.ui.button(label="Informações", emoji="📋", style=discord.ButtonStyle.primary)
-    async def informacoes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ficha = garantir_ficha_fatal(interaction.user.id)
-        await interaction.response.send_modal(FatalInfoModal(ficha))
-
-    @discord.ui.button(label="Atributos", emoji="⚔️", style=discord.ButtonStyle.primary)
-    async def atributos(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ficha = garantir_ficha_fatal(interaction.user.id)
-        await interaction.response.send_modal(FatalAtributosModal(ficha))
-
-    @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
-    async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ficha = garantir_ficha_fatal(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_fatal(ficha), view=FatalFichaView())
-
-    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
-    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
-
-
-class FatalSistemaView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=300)
-
-    @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
-    async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
-        ficha = garantir_ficha_fatal(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_fatal(ficha), view=FatalFichaView())
-
-    @discord.ui.button(label="Rolar 3d6", emoji="🎲", style=discord.ButtonStyle.success)
-    async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        dados = [random.randint(1, 6) for _ in range(3)]
-        total = sum(dados)
-        registrar_rolagem(interaction.user.id, interaction.user.display_name, "Fatal 3d6", total, 6)
-        embed = discord.Embed(title="🎲 ROLAGEM — FATAL RPG", color=discord.Color.dark_grey())
-        embed.add_field(name="Dados", value=f"`{dados[0]}` + `{dados[1]}` + `{dados[2]}`", inline=False)
-        embed.add_field(name="Total", value=f"**{total}**", inline=False)
-        await interaction.response.edit_message(embed=embed, view=FatalSistemaView())
-
-    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
-    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
-
-
-# ==================================================
 # UI — BRUTAL
 # ==================================================
 
@@ -2791,16 +2559,15 @@ class BrutalSistemaView(discord.ui.View):
     @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
     async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_brutal(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_brutal(ficha), view=BrutalFichaView())
+        await interaction.response.send_message(embed=criar_embed_ficha_brutal(ficha), view=BrutalFichaView(), ephemeral=True)
 
-    @discord.ui.button(label="Rolar 2d6", emoji="🎲", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Rolar 1d6", emoji="🎲", style=discord.ButtonStyle.success)
     async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        d1, d2 = random.randint(1, 6), random.randint(1, 6)
-        total = d1 + d2
-        registrar_rolagem(interaction.user.id, interaction.user.display_name, "Brutal 2d6", total, 6)
+        total = random.randint(1, 6)
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, "Brutal 1d6", total, 6)
         embed = discord.Embed(title="🎲 ROLAGEM — BRUTAL", color=discord.Color.dark_red())
-        embed.add_field(name="Dados", value=f"`{d1}` + `{d2}`", inline=True)
-        embed.add_field(name="Total", value=f"**{total}**", inline=True)
+        embed.add_field(name="Dado", value=f"`{total}`", inline=True)
+        embed.add_field(name="Resultado", value=f"**{total}**", inline=True)
         await interaction.response.edit_message(embed=embed, view=BrutalSistemaView())
 
     @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
@@ -2915,7 +2682,7 @@ class KidsSistemaView(discord.ui.View):
     @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
     async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_kids(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_kids(ficha), view=KidsFichaView())
+        await interaction.response.send_message(embed=criar_embed_ficha_kids(ficha), view=KidsFichaView(), ephemeral=True)
 
     @discord.ui.button(label="Rolar Atributo", emoji="🎲", style=discord.ButtonStyle.success)
     async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2999,18 +2766,33 @@ class OrdemAtributosModal(discord.ui.Modal):
         try:
             vals = [int(self.agilidade.value), int(self.forca.value), int(self.intelecto.value),
                     int(self.presenca.value), int(self.vigor.value)]
-            if any(v < 0 for v in vals):
-                raise ValueError
+            # Atributos podem ser 0 ou negativos (conforme regra da mesa)
+            pass
         except ValueError:
-            await interaction.response.send_message("❌ Atributos precisam ser números ≥ 0.", ephemeral=True)
+            await interaction.response.send_message("❌ Atributos precisam ser números inteiros.", ephemeral=True)
             return
+
         garantir_ficha_ordem(interaction.user.id)
+        cursor.execute("SELECT nex FROM fichas_ordem WHERE user_id=?", (interaction.user.id,))
+        nex = cursor.fetchone()[0]
+
+        max_pontos = pontos_atributo_ordem(nex)
+        total = sum(vals)
+
+        if total > max_pontos:
+            await interaction.response.send_message(
+                f"❌ Você só tem **{max_pontos}** pontos de atributo no NEX {nex}%.\n"
+                f"Você tentou usar **{total}** pontos.\n\n"
+                f"Pontos ganhos em: 20%, 50%, 80% e 90%.",
+                ephemeral=True
+            )
+            return
+
         cursor.execute("""
             UPDATE fichas_ordem SET agilidade=?, forca=?, intelecto=?, presenca=?, vigor=?
             WHERE user_id=?
         """, (*vals, interaction.user.id))
-        cursor.execute("SELECT nex FROM fichas_ordem WHERE user_id=?", (interaction.user.id,))
-        nex = cursor.fetchone()[0]
+
         pv_max, pe_max, san_max = calcular_recursos_ordem(nex, vals[4], vals[3])
         cursor.execute("""
             UPDATE fichas_ordem SET
@@ -3122,6 +2904,47 @@ class OrdemRolarPageButton(discord.ui.Button):
         await interaction.response.edit_message(view=OrdemRolagemView(self.page))
 
 
+class OrdemNexModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="📈 NEX — Ordem")
+        f = ficha or {}
+        self.nex = discord.ui.TextInput(
+            label="NEX (%)",
+            placeholder="Ex: 5, 20, 50, 80, 90...",
+            required=True,
+            default=str(f.get("nex", 5))
+        )
+        self.add_item(self.nex)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            nex = int(self.nex.value)
+            if nex < 5 or nex > 99:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message("❌ NEX precisa ser um número entre 5 e 99.", ephemeral=True)
+            return
+
+        garantir_ficha_ordem(interaction.user.id)
+        cursor.execute("UPDATE fichas_ordem SET nex=? WHERE user_id=?", (nex, interaction.user.id))
+
+        # Recalcular recursos
+        cursor.execute("SELECT vigor, presenca FROM fichas_ordem WHERE user_id=?", (interaction.user.id,))
+        vigor, presenca = cursor.fetchone()
+        pv_max, pe_max, san_max = calcular_recursos_ordem(nex, vigor, presenca)
+        cursor.execute("""
+            UPDATE fichas_ordem SET
+                pv_max=?, pv=MIN(pv, ?),
+                pe_max=?, pe=MIN(pe, ?),
+                san_max=?, san=MIN(san, ?)
+            WHERE user_id=?
+        """, (pv_max, pv_max, pe_max, pe_max, san_max, san_max, interaction.user.id))
+        db.commit()
+
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView())
+
+
 class OrdemFichaView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=300)
@@ -3135,6 +2958,11 @@ class OrdemFichaView(discord.ui.View):
     async def atributos(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_ordem(interaction.user.id)
         await interaction.response.send_modal(OrdemAtributosModal(ficha))
+
+    @discord.ui.button(label="NEX", emoji="📈", style=discord.ButtonStyle.primary)
+    async def nex(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.send_modal(OrdemNexModal(ficha))
 
     @discord.ui.button(label="Perícias", emoji="🎯", style=discord.ButtonStyle.secondary)
     async def pericias(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3157,7 +2985,7 @@ class OrdemSistemaView(discord.ui.View):
     @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
     async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_ordem(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView())
+        await interaction.response.send_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView(), ephemeral=True)
 
     @discord.ui.button(label="Rolar Perícia", emoji="🎲", style=discord.ButtonStyle.success)
     async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3314,7 +3142,7 @@ class DndSistemaView(discord.ui.View):
     @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
     async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_dnd(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_dnd(ficha), view=DndFichaView())
+        await interaction.response.send_message(embed=criar_embed_ficha_dnd(ficha), view=DndFichaView(), ephemeral=True)
 
     @discord.ui.button(label="Rolar Skill", emoji="🎲", style=discord.ButtonStyle.success)
     async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3481,7 +3309,7 @@ class PfSistemaView(discord.ui.View):
     @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
     async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_pathfinder(interaction.user.id)
-        await interaction.response.edit_message(embed=criar_embed_ficha_pathfinder(ficha), view=PfFichaView())
+        await interaction.response.send_message(embed=criar_embed_ficha_pathfinder(ficha), view=PfFichaView(), ephemeral=True)
 
     @discord.ui.button(label="Rolar Skill", emoji="🎲", style=discord.ButtonStyle.success)
     async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3492,9 +3320,296 @@ class PfSistemaView(discord.ui.View):
         await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
 
 
+
+# ==================================================
+# SISTEMAS CUSTOM + ANOTAÇÕES
+# ==================================================
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS sistemas_custom (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    descricao TEXT DEFAULT '',
+    atributos TEXT DEFAULT '',
+    rolagem TEXT DEFAULT '1d20',
+    criador_id INTEGER,
+    criador_nome TEXT DEFAULT ''
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS fichas_custom (
+    user_id INTEGER NOT NULL,
+    sistema_id INTEGER NOT NULL,
+    nome TEXT DEFAULT '',
+    dados TEXT DEFAULT '{}',
+    anotacoes TEXT DEFAULT '',
+    PRIMARY KEY (user_id, sistema_id)
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS anotacoes_mesa (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    texto TEXT DEFAULT ''
+)
+""")
+db.commit()
+
+
+def garantir_anotacoes_mesa():
+    cursor.execute("INSERT OR IGNORE INTO anotacoes_mesa (id, texto) VALUES (1, '')")
+    db.commit()
+
+
+def listar_sistemas_custom():
+    cursor.execute("SELECT id, nome, descricao, atributos, rolagem, criador_nome FROM sistemas_custom ORDER BY id DESC")
+    return cursor.fetchall()
+
+
+def garantir_ficha_custom(user_id, sistema_id):
+    cursor.execute(
+        "INSERT OR IGNORE INTO fichas_custom (user_id, sistema_id, dados) VALUES (?, ?, '{}')",
+        (user_id, sistema_id)
+    )
+    db.commit()
+    cursor.execute(
+        "SELECT nome, dados, anotacoes FROM fichas_custom WHERE user_id=? AND sistema_id=?",
+        (user_id, sistema_id)
+    )
+    row = cursor.fetchone()
+    nome, dados, anotacoes = row
+    try:
+        dados = json.loads(dados or "{}")
+    except:
+        dados = {}
+    return {"nome": nome or "", "dados": dados, "anotacoes": anotacoes or ""}
+
+
+def criar_embed_ficha_custom(sistema, ficha):
+    sid, nome_sis, desc, attrs, rolagem, criador = sistema
+    embed = discord.Embed(
+        title=f"🧩 FICHA — {nome_sis}",
+        description=f"**{ficha['nome'] or 'Sem nome'}**\\n_{desc or 'Sistema custom'}_",
+        color=discord.Color.purple()
+    )
+    if attrs:
+        embed.add_field(name="Atributos sugeridos", value=attrs[:1024], inline=False)
+    if ficha["dados"]:
+        texto = "\\n".join(f"**{k}:** {v}" for k, v in ficha["dados"].items())
+        embed.add_field(name="Dados da ficha", value=texto[:1024] or "—", inline=False)
+    if ficha["anotacoes"]:
+        embed.add_field(name="📝 Anotações", value=ficha["anotacoes"][:1024], inline=False)
+    embed.add_field(name="🎲 Rolagem padrão", value=rolagem or "1d20", inline=True)
+    embed.set_footer(text=f"Criado por {criador or 'alguém'} • Ficha privada")
+    return embed
+
+
+class CriarSistemaModal(discord.ui.Modal):
+    def __init__(self):
+        super().__init__(title="🧩 Criar Sistema")
+        self.nome = discord.ui.TextInput(label="Nome do sistema", required=True, max_length=80)
+        self.descricao = discord.ui.TextInput(label="Descrição", style=discord.TextStyle.paragraph, required=False, max_length=500)
+        self.atributos = discord.ui.TextInput(label="Atributos (separados por vírgula)", placeholder="Força, Agilidade, Mente...", required=False, max_length=300)
+        self.rolagem = discord.ui.TextInput(label="Rolagem padrão", placeholder="1d20, 2d6, 1d6...", required=False, max_length=20, default="1d20")
+        for i in [self.nome, self.descricao, self.atributos, self.rolagem]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        cursor.execute(
+            """INSERT INTO sistemas_custom (nome, descricao, atributos, rolagem, criador_id, criador_nome)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                self.nome.value.strip(),
+                self.descricao.value or "",
+                self.atributos.value or "",
+                (self.rolagem.value or "1d20").strip(),
+                interaction.user.id,
+                interaction.user.display_name
+            )
+        )
+        db.commit()
+        await interaction.response.send_message(
+            f"🧩 Sistema **{self.nome.value}** criado!\nAgora aparece em **Sistemas → Sistemas Custom**.",
+            ephemeral=True
+        )
+
+
+class CustomFichaModal(discord.ui.Modal):
+    def __init__(self, sistema_id, ficha=None):
+        super().__init__(title="🧩 Editar Ficha Custom")
+        self.sistema_id = sistema_id
+        f = ficha or {}
+        self.nome = discord.ui.TextInput(label="Nome do personagem", required=False, max_length=100, default=f.get("nome", ""))
+        self.dados = discord.ui.TextInput(
+            label="Dados (ex: Força: 3, Mente: 2)",
+            style=discord.TextStyle.paragraph,
+            required=False,
+            max_length=1000,
+            default=", ".join(f"{k}: {v}" for k, v in (f.get("dados") or {}).items()) if f.get("dados") else ""
+        )
+        self.anotacoes = discord.ui.TextInput(label="Anotações", style=discord.TextStyle.paragraph, required=False, max_length=1000, default=f.get("anotacoes", ""))
+        for i in [self.nome, self.dados, self.anotacoes]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        dados = {}
+        raw = self.dados.value or ""
+        for parte in raw.split(","):
+            parte = parte.strip()
+            if ":" in parte:
+                k, v = parte.split(":", 1)
+                dados[k.strip()] = v.strip()
+        cursor.execute(
+            """UPDATE fichas_custom SET nome=?, dados=?, anotacoes=? WHERE user_id=? AND sistema_id=?""",
+            (self.nome.value, json.dumps(dados, ensure_ascii=False), self.anotacoes.value or "", interaction.user.id, self.sistema_id)
+        )
+        db.commit()
+        cursor.execute("SELECT id, nome, descricao, atributos, rolagem, criador_nome FROM sistemas_custom WHERE id=?", (self.sistema_id,))
+        sistema = cursor.fetchone()
+        ficha = garantir_ficha_custom(interaction.user.id, self.sistema_id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_custom(sistema, ficha), view=CustomFichaView(self.sistema_id))
+
+
+class CustomFichaView(discord.ui.View):
+    def __init__(self, sistema_id):
+        super().__init__(timeout=300)
+        self.sistema_id = sistema_id
+
+    @discord.ui.button(label="Editar", emoji="✏️", style=discord.ButtonStyle.primary)
+    async def editar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_custom(interaction.user.id, self.sistema_id)
+        await interaction.response.send_modal(CustomFichaModal(self.sistema_id, ficha))
+
+    @discord.ui.button(label="Rolar", emoji="🎲", style=discord.ButtonStyle.success)
+    async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cursor.execute("SELECT rolagem, nome FROM sistemas_custom WHERE id=?", (self.sistema_id,))
+        row = cursor.fetchone()
+        rolagem = (row[0] if row else "1d20") or "1d20"
+        nome_sis = row[1] if row else "Custom"
+        # parse simples NdX
+        total = 0
+        detalhes = []
+        try:
+            partes = rolagem.lower().replace(" ", "")
+            if "d" in partes:
+                n, x = partes.split("d", 1)
+                n = int(n or 1)
+                x = int("".join(c for c in x if c.isdigit()) or 20)
+                for _ in range(max(1, min(n, 10))):
+                    r = random.randint(1, max(2, x))
+                    detalhes.append(str(r))
+                    total += r
+            else:
+                total = random.randint(1, 20)
+                detalhes = [str(total)]
+        except:
+            total = random.randint(1, 20)
+            detalhes = [str(total)]
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, f"Custom:{nome_sis}", total, 20)
+        embed = discord.Embed(title=f"🎲 {nome_sis}", color=discord.Color.purple())
+        embed.add_field(name="Rolagem", value=rolagem, inline=True)
+        embed.add_field(name="Dados", value=" + ".join(detalhes), inline=True)
+        embed.add_field(name="Total", value=f"**{total}**", inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Fechar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def fechar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Ficha fechada.", embed=None, view=None)
+
+
+class CustomSistemaSelect(discord.ui.Select):
+    def __init__(self, sistemas):
+        options = []
+        for s in sistemas[:25]:
+            options.append(discord.SelectOption(
+                label=s[1][:100],
+                value=str(s[0]),
+                description=(s[2] or "Sistema custom")[:100]
+            ))
+        super().__init__(placeholder="Escolha um sistema custom...", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        sid = int(self.values[0])
+        cursor.execute("SELECT id, nome, descricao, atributos, rolagem, criador_nome FROM sistemas_custom WHERE id=?", (sid,))
+        sistema = cursor.fetchone()
+        if not sistema:
+            await interaction.response.send_message("Sistema não encontrado.", ephemeral=True)
+            return
+        ficha = garantir_ficha_custom(interaction.user.id, sid)
+        await interaction.response.send_message(
+            embed=criar_embed_ficha_custom(sistema, ficha),
+            view=CustomFichaView(sid),
+            ephemeral=True
+        )
+
+
+class CustomSistemasView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        sistemas = listar_sistemas_custom()
+        if sistemas:
+            self.add_item(CustomSistemaSelect(sistemas))
+
+    @discord.ui.button(label="Criar Sistema", emoji="➕", style=discord.ButtonStyle.success)
+    async def criar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CriarSistemaModal())
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
+class CustomSistemasMestreView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Listar", emoji="📋", style=discord.ButtonStyle.primary)
+    async def listar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        sistemas = listar_sistemas_custom()
+        if not sistemas:
+            await interaction.response.send_message("Nenhum sistema custom ainda.", ephemeral=True)
+            return
+        texto = ""
+        for s in sistemas:
+            texto += f"**#{s[0]} — {s[1]}** (por {s[5] or '?'})\\n{s[2] or '—'}\\n\\n"
+        embed = discord.Embed(title="🧩 Sistemas Custom", description=texto[:4000], color=discord.Color.purple())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Criar", emoji="➕", style=discord.ButtonStyle.success)
+    async def criar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CriarSistemaModal())
+
+
+class AnotacoesMesaModal(discord.ui.Modal):
+    def __init__(self, texto=""):
+        super().__init__(title="📝 Anotações da Mesa")
+        self.texto = discord.ui.TextInput(label="Texto", style=discord.TextStyle.paragraph, required=False, max_length=2000, default=texto[:2000])
+        self.add_item(self.texto)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        garantir_anotacoes_mesa()
+        cursor.execute("UPDATE anotacoes_mesa SET texto=? WHERE id=1", (self.texto.value or "",))
+        db.commit()
+        await interaction.response.send_message("📝 Anotações salvas.", ephemeral=True)
+
+
+class AnotacoesMesaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Editar", emoji="✏️", style=discord.ButtonStyle.primary)
+    async def editar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        garantir_anotacoes_mesa()
+        cursor.execute("SELECT texto FROM anotacoes_mesa WHERE id=1")
+        row = cursor.fetchone()
+        await interaction.response.send_modal(AnotacoesMesaModal(row[0] if row else ""))
+
+
 # ==================================================
 # SISTEMAS
 # ==================================================
+
 
 class SistemasView(discord.ui.View):
 
@@ -3607,25 +3722,6 @@ class SistemasView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Fatal RPG",
-        emoji="💀",
-        style=discord.ButtonStyle.secondary
-    )
-    async def fatal(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        await interaction.response.edit_message(
-            embed=discord.Embed(
-                title="💀 FATAL RPG",
-                description="Sistema clássico brasileiro.\n\nFicha e rolagem 3d6.",
-                color=discord.Color.dark_grey()
-            ),
-            view=FatalSistemaView()
-        )
-
-    @discord.ui.button(
         label="Brutal",
         emoji="🔪",
         style=discord.ButtonStyle.danger
@@ -3661,6 +3757,32 @@ class SistemasView(discord.ui.View):
                 color=discord.Color.blue()
             ),
             view=KidsSistemaView()
+        )
+
+    @discord.ui.button(
+        label="Sistemas Custom",
+        emoji="🧩",
+        style=discord.ButtonStyle.success
+    )
+    async def custom(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        sistemas = listar_sistemas_custom()
+        desc = (
+            "Crie seu próprio sistema ou abra um já existente.\n"
+            "Qualquer um pode cadastrar — não precisa atualizar o bot."
+        )
+        if sistemas:
+            desc += f"\n\n**{len(sistemas)}** sistema(s) na comunidade."
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🧩 SISTEMAS CUSTOM",
+                description=desc,
+                color=discord.Color.purple()
+            ),
+            view=CustomSistemasView()
         )
 
     @discord.ui.button(
@@ -3802,9 +3924,10 @@ class FichasView(discord.ui.View):
         button: discord.ui.Button
     ):
         ficha = garantir_ficha_ordem(interaction.user.id)
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=criar_embed_ficha_ordem(ficha),
-            view=OrdemFichaView()
+            view=OrdemFichaView(),
+            ephemeral=True
         )
 
     @discord.ui.button(
@@ -3818,9 +3941,10 @@ class FichasView(discord.ui.View):
         button: discord.ui.Button
     ):
         ficha = garantir_ficha_dnd(interaction.user.id)
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=criar_embed_ficha_dnd(ficha),
-            view=DndFichaView()
+            view=DndFichaView(),
+            ephemeral=True
         )
 
     @discord.ui.button(
@@ -3834,25 +3958,10 @@ class FichasView(discord.ui.View):
         button: discord.ui.Button
     ):
         ficha = garantir_ficha_pathfinder(interaction.user.id)
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=criar_embed_ficha_pathfinder(ficha),
-            view=PfFichaView()
-        )
-
-    @discord.ui.button(
-        label="Fatal RPG",
-        emoji="💀",
-        style=discord.ButtonStyle.secondary
-    )
-    async def fatal(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        ficha = garantir_ficha_fatal(interaction.user.id)
-        await interaction.response.edit_message(
-            embed=criar_embed_ficha_fatal(ficha),
-            view=FatalFichaView()
+            view=PfFichaView(),
+            ephemeral=True
         )
 
     @discord.ui.button(
@@ -3866,9 +3975,10 @@ class FichasView(discord.ui.View):
         button: discord.ui.Button
     ):
         ficha = garantir_ficha_brutal(interaction.user.id)
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=criar_embed_ficha_brutal(ficha),
-            view=BrutalFichaView()
+            view=BrutalFichaView(),
+            ephemeral=True
         )
 
     @discord.ui.button(
@@ -3882,9 +3992,10 @@ class FichasView(discord.ui.View):
         button: discord.ui.Button
     ):
         ficha = garantir_ficha_kids(interaction.user.id)
-        await interaction.response.edit_message(
+        await interaction.response.send_message(
             embed=criar_embed_ficha_kids(ficha),
-            view=KidsFichaView()
+            view=KidsFichaView(),
+            ephemeral=True
         )
 
     @discord.ui.button(
@@ -4077,97 +4188,33 @@ def criar_embed_painel_principal():
     embed = discord.Embed(
         title="🎲 TAVELADA RPG",
         description=(
-            "Central de ferramentas da mesa.\n\n"
-            "Escolha uma categoria:"
+            "**Central multi-sistema da mesa.**\n\n"
+            "Escolha uma categoria abaixo:"
         ),
         color=discord.Color.blurple()
     )
-
-    embed.add_field(
-        name="📚 Sistemas",
-        value=(
-            "Escolha e acesse os sistemas "
-            "disponíveis no Tavelada."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="📖 Fichas",
-        value=(
-            "Crie e gerencie fichas "
-            "de personagem."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="⚔️ Combate",
-        value=(
-            "Veja a iniciativa e o "
-            "combate atual."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🎲 Rolagens",
-        value=(
-            "Faça rolagens e consulte "
-            "seu histórico."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🛡️ Mestre",
-        value=(
-            "Ferramentas exclusivas "
-            "dos Pesquisadores."
-        ),
-        inline=False
-    )
-
-    embed.set_footer(
-        text="Tavelada RPG • Painel Principal"
-    )
-
+    embed.add_field(name="📚 Sistemas", value="Tavelada • Ordem • D&D • Pathfinder • Brutal • Kids\n+ sistemas criados pela comunidade", inline=False)
+    embed.add_field(name="📖 Fichas", value="Fichas **privadas** de cada sistema", inline=False)
+    embed.add_field(name="⚔️ Combate", value="Iniciativa e turnos (Tavelada)", inline=False)
+    embed.add_field(name="🎲 Rolagens", value="Dados e histórico", inline=False)
+    embed.add_field(name="🛡️ Mestre", value="NPCs, combate, XP e ferramentas de mesa", inline=False)
+    embed.set_footer(text="Tavelada RPG • Multi-sistema • Fichas privadas")
     return embed
 
 
 def criar_embed_sistemas():
     embed = discord.Embed(
         title="📚 SISTEMAS",
-        description=(
-            "Escolha o sistema que deseja acessar."
-        ),
+        description="Escolha um sistema oficial ou um **sistema custom** da comunidade.",
         color=discord.Color.blurple()
     )
-
-    embed.add_field(
-        name="📜 Tavelada",
-        value="Sistema próprio da mesa.",
-        inline=False
-    )
-
-    embed.add_field(
-        name="👁️ Ordem Paranormal",
-        value="Integração em desenvolvimento.",
-        inline=False
-    )
-
-    embed.add_field(
-        name="🐉 D&D",
-        value="Integração em desenvolvimento.",
-        inline=False
-    )
-
-    embed.add_field(
-        name="⚔️ Pathfinder",
-        value="Integração em desenvolvimento.",
-        inline=False
-    )
-
+    embed.add_field(name="📜 Tavelada", value="Sistema próprio da mesa", inline=True)
+    embed.add_field(name="👁️ Ordem", value="Investigação paranormal", inline=True)
+    embed.add_field(name="🐉 D&D", value="Fantasia clássica", inline=True)
+    embed.add_field(name="⚔️ Pathfinder", value="Fantasia tática", inline=True)
+    embed.add_field(name="🔪 Brutal", value="Slasher / sobrevivência", inline=True)
+    embed.add_field(name="🚲 Kids on Bikes", value="Mistério adolescente", inline=True)
+    embed.add_field(name="🧩 Custom", value="Crie e use sistemas da comunidade", inline=False)
     return embed
 
 
@@ -4310,13 +4357,21 @@ class PainelPrincipal(discord.ui.View):
     description="Abre o painel do Tavelada.",
     guild=GUILD
 )
-async def painel(
-    interaction: discord.Interaction
-):
-    await interaction.response.send_message(
-        embed=criar_embed_painel_principal(),
-        view=PainelPrincipal()
-    )
+async def painel(interaction: discord.Interaction):
+    try:
+        await interaction.response.defer(ephemeral=False)
+        await interaction.followup.send(
+            embed=criar_embed_painel_principal(),
+            view=PainelPrincipal()
+        )
+    except Exception as e:
+        try:
+            await interaction.followup.send(
+                f"❌ Erro ao abrir o painel: {e}",
+                ephemeral=True
+            )
+        except:
+            print(f"Erro no /painel: {e}")
 
 
 # ==================================================
