@@ -2112,6 +2112,7 @@ def criar_embed_escudo_mestre():
     embed.add_field(name="⭐ Dar XP", value="Lembrete do comando `/darxp` para evoluir fichas Tavelada.", inline=False)
     embed.add_field(name="🧩 Sistemas Custom", value="Ver e criar sistemas feitos pelos jogadores.", inline=False)
     embed.add_field(name="📝 Anotações da Mesa", value="Bloco de notas compartilhado só para mestres.", inline=False)
+    embed.add_field(name="👥 Fichas ativas", value="Lista quem já tem ficha em cada sistema.", inline=False)
     embed.set_footer(text="Visível apenas para quem tem o cargo de Pesquisador")
     return embed
 
@@ -2182,6 +2183,45 @@ class EscudoMestre(discord.ui.View):
         texto = (row[0] if row else "") or "Nenhuma anotação ainda."
         embed = discord.Embed(title="📝 Anotações da Mesa", description=texto[:4000], color=discord.Color.dark_grey())
         await interaction.response.send_message(embed=embed, view=AnotacoesMesaView(), ephemeral=True)
+
+    @discord.ui.button(label="Fichas ativas", emoji="👥", style=discord.ButtonStyle.primary)
+    async def fichas_ativas(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        linhas = []
+        tabelas = [
+            ("Tavelada", "fichas", "nome"),
+            ("Ordem", "fichas_ordem", "nome"),
+            ("D&D", "fichas_dnd", "nome"),
+            ("Pathfinder", "fichas_pathfinder", "nome"),
+            ("Brutal", "fichas_brutal", "nome"),
+            ("Kids", "fichas_kids", "nome"),
+            ("Shinobi", "fichas_shinobi", "nome"),
+        ]
+        for sistema, tabela, col in tabelas:
+            try:
+                cursor.execute(f"SELECT user_id, {col} FROM {tabela}")
+                rows = cursor.fetchall()
+                if rows:
+                    nomes = []
+                    for uid, nome in rows:
+                        label = nome or f"ID {uid}"
+                        nomes.append(f"• {label}")
+                    linhas.append(f"**{sistema}** ({len(rows)})\n" + "\n".join(nomes[:15]))
+            except Exception:
+                pass
+        if not linhas:
+            desc = "Nenhuma ficha encontrada ainda."
+        else:
+            desc = "\n\n".join(linhas)[:4000]
+        embed = discord.Embed(
+            title="👥 Fichas ativas na mesa",
+            description=desc,
+            color=discord.Color.dark_blue()
+        )
+        embed.set_footer(text="Resumo para o mestre • privado")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ==================================================
@@ -2765,6 +2805,11 @@ class ShinobiFichaView(discord.ui.View):
         ficha = garantir_ficha_shinobi(interaction.user.id)
         await interaction.response.send_modal(ShinobiTextoModal("anotacoes", "📝 Anotações", ficha))
 
+    @discord.ui.button(label="Energias", emoji="❤️", style=discord.ButtonStyle.danger)
+    async def energias(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_modal(ShinobiEnergiaModal(ficha))
+
     @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
     async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_shinobi(interaction.user.id)
@@ -2773,6 +2818,32 @@ class ShinobiFichaView(discord.ui.View):
     @discord.ui.button(label="Fechar", emoji="↩️", style=discord.ButtonStyle.secondary)
     async def fechar(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(content="Ficha fechada.", embed=None, view=None)
+
+
+class ShinobiEnergiaModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="❤️ Vitalidade e Chakra")
+        f = ficha or {}
+        self.vit = discord.ui.TextInput(label="Vitalidade atual", required=True, default=str(f.get("vitalidade") or 0))
+        self.vit_max = discord.ui.TextInput(label="Vitalidade máxima", required=True, default=str(f.get("vitalidade_max") or 0))
+        self.cha = discord.ui.TextInput(label="Chakra atual", required=True, default=str(f.get("chakra") or 0))
+        self.cha_max = discord.ui.TextInput(label="Chakra máximo", required=True, default=str(f.get("chakra_max") or 0))
+        for i in [self.vit, self.vit_max, self.cha, self.cha_max]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.vit, self.vit_max, self.cha, self.cha_max]]
+        except ValueError:
+            await interaction.response.send_message("❌ Valores precisam ser números.", ephemeral=True)
+            return
+        garantir_ficha_shinobi(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_shinobi SET vitalidade=?, vitalidade_max=?, chakra=?, chakra_max=? WHERE user_id=?
+        """, (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_shinobi(ficha), view=ShinobiFichaView())
 
 
 class ShinobiRolarSelect(discord.ui.Select):
@@ -3422,6 +3493,11 @@ class OrdemFichaView(discord.ui.View):
     async def pericias(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(content="Escolha a perícia:", embed=None, view=OrdemPericiasView())
 
+    @discord.ui.button(label="PV/PE/SAN", emoji="❤️", style=discord.ButtonStyle.danger)
+    async def energias(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.send_modal(OrdemEnergiaModal(ficha))
+
     @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
     async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
         ficha = garantir_ficha_ordem(interaction.user.id)
@@ -3429,7 +3505,33 @@ class OrdemFichaView(discord.ui.View):
 
     @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
     async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+        await interaction.response.edit_message(content="Ficha fechada.", embed=None, view=None)
+
+
+class OrdemEnergiaModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="❤️ PV / PE / SAN")
+        f = ficha or {}
+        self.pv = discord.ui.TextInput(label="PV atual", required=True, default=str(f.get("pv") or 0))
+        self.pe = discord.ui.TextInput(label="PE atual", required=True, default=str(f.get("pe") or 0))
+        self.san = discord.ui.TextInput(label="SAN atual", required=True, default=str(f.get("san") or 0))
+        self.defesa = discord.ui.TextInput(label="Defesa", required=True, default=str(f.get("defesa") or 10))
+        for i in [self.pv, self.pe, self.san, self.defesa]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.pv, self.pe, self.san, self.defesa]]
+        except ValueError:
+            await interaction.response.send_message("❌ Valores precisam ser números.", ephemeral=True)
+            return
+        garantir_ficha_ordem(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_ordem SET pv=?, pe=?, san=?, defesa=? WHERE user_id=?
+        """, (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_ordem(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_ordem(ficha), view=OrdemFichaView())
 
 
 class OrdemSistemaView(discord.ui.View):
@@ -4938,10 +5040,17 @@ class PainelPrincipal(discord.ui.View):
     guild=GUILD
 )
 async def painel(interaction: discord.Interaction):
-    await interaction.response.send_message(
-        embed=criar_embed_painel_principal(),
-        view=PainelPrincipal()
-    )
+    try:
+        await interaction.response.defer()
+    except Exception:
+        pass
+    try:
+        await interaction.followup.send(
+            embed=criar_embed_painel_principal(),
+            view=PainelPrincipal()
+        )
+    except Exception as e:
+        print(f"Erro /painel: {e}")
 
 
 
@@ -5297,6 +5406,50 @@ async def on_ready():
         print(
             f"❌ Erro ao sincronizar comandos: {erro}"
         )
+
+
+
+@tree.command(
+    name="ajuda",
+    description="Como usar o bot Tavelada RPG.",
+    guild=GUILD
+)
+async def ajuda(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🆘 AJUDA — TAVELADA RPG",
+        description="Guia rápido do bot multi-sistema.",
+        color=discord.Color.green()
+    )
+    embed.add_field(
+        name="/painel",
+        value=(
+            "Abre o menu principal.\n"
+            "• **Sistemas** — entra no sistema da mesa\n"
+            "• **Fichas** — abre sua ficha (privada)\n"
+            "• **Rolagens** — qualquer dado (D4–D20, 2d8, personalizado)\n"
+            "• **Combate** — iniciativa Tavelada\n"
+            "• **Mestre** — só Pesquisadores"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="Fichas privadas",
+        value="Só quem clicou vê a ficha. Edite pelos botões (atributos, energias, anotações).",
+        inline=False
+    )
+    embed.add_field(
+        name="Sistemas",
+        value="Tavelada • Ordem • D&D • Pathfinder • Brutal • Kids • Shinobi no Sho • Custom",
+        inline=False
+    )
+    embed.add_field(
+        name="/mestre e /darxp",
+        value="Ferramentas de mestre (cargo Pesquisador).",
+        inline=False
+    )
+    embed.set_footer(text="Dúvida? Chama o dono da mesa.")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 
 # ==================================================
