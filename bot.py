@@ -2098,6 +2098,24 @@ class NPCSelect(discord.ui.Select):
 # ESCUDO DO MESTRE
 # ==================================================
 
+def criar_embed_escudo_mestre():
+    embed = discord.Embed(
+        title="🛡️ ESCUDO DO MESTRE",
+        description=(
+            "Ferramentas exclusivas de **Pesquisador**.\n\n"
+            "Gerencie NPCs, combate, XP, anotações da mesa e sistemas da comunidade."
+        ),
+        color=discord.Color.dark_red()
+    )
+    embed.add_field(name="🛡️ NPCs / Bosses", value="Criar e listar NPCs de qualquer sistema, com notas e atributos extras.", inline=False)
+    embed.add_field(name="⚔️ Combate", value="Iniciar combate Tavelada (iniciativa, turnos, ordem).", inline=False)
+    embed.add_field(name="⭐ Dar XP", value="Lembrete do comando `/darxp` para evoluir fichas Tavelada.", inline=False)
+    embed.add_field(name="🧩 Sistemas Custom", value="Ver e criar sistemas feitos pelos jogadores.", inline=False)
+    embed.add_field(name="📝 Anotações da Mesa", value="Bloco de notas compartilhado só para mestres.", inline=False)
+    embed.set_footer(text="Visível apenas para quem tem o cargo de Pesquisador")
+    return embed
+
+
 class EscudoMestre(discord.ui.View):
 
     def __init__(self):
@@ -2110,7 +2128,12 @@ class EscudoMestre(discord.ui.View):
             return
         embed = discord.Embed(
             title="🛡️ NPCs / BOSSES",
-            description="Crie e gerencie NPCs de **qualquer sistema**.\nUse o campo Sistema e Notas para atributos extras.",
+            description=(
+                "Crie e gerencie NPCs de **qualquer sistema**.\n"
+                "• Nome, tipo, vida\n"
+                "• Campo **Sistema** (Tavelada, Ordem, Shinobi...)\n"
+                "• **Notas** livres para atributos, poderes e comportamento"
+            ),
             color=discord.Color.dark_red()
         )
         await interaction.response.send_message(embed=embed, view=BossView(), ephemeral=True)
@@ -4488,101 +4511,164 @@ class FichasView(discord.ui.View):
 # ROLAGENS
 # ==================================================
 
-class RolagensView(discord.ui.View):
+def _rolar_dados(faces, quantidade=1, bonus=0, nome=None):
+    rolls = [random.randint(1, faces) for _ in range(max(1, min(quantidade, 20)))]
+    total = sum(rolls) + bonus
+    return rolls, total
 
+
+def criar_embed_rolagem(user, tipo, rolls, faces, bonus, total):
+    rolls_txt = " + ".join(f"`{r}`" for r in rolls)
+    calc = rolls_txt
+    if bonus:
+        calc += f" + `{bonus}`"
+    calc += f" = **{total}**"
+    embed = discord.Embed(
+        title=f"🎲 {tipo}",
+        description=f"**{user.display_name}** rolou os dados.",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="Dados", value=rolls_txt if len(rolls) <= 12 else f"{len(rolls)} dados", inline=True)
+    embed.add_field(name="Faces", value=f"D{faces}", inline=True)
+    embed.add_field(name="Total", value=f"**{total}**", inline=True)
+    embed.add_field(name="Cálculo", value=calc, inline=False)
+    if faces == 8 and len(rolls) == 2:
+        s = sum(rolls)
+        if s >= 15:
+            embed.add_field(name="Especial", value="✨ Acerto crítico (15–16) no Sistema D8", inline=False)
+        elif s <= 3:
+            embed.add_field(name="Especial", value="💥 Erro crítico (2–3) no Sistema D8", inline=False)
+    embed.set_footer(text="Tavelada RPG • Rolagens")
+    return embed
+
+
+class RolagemCustomModal(discord.ui.Modal):
     def __init__(self):
-        super().__init__(
-            timeout=300
+        super().__init__(title="🎲 Rolagem personalizada")
+        self.expr = discord.ui.TextInput(
+            label="Expressão",
+            placeholder="Exemplos: 1d20  |  2d8+3  |  3d6  |  1d100",
+            required=True,
+            max_length=40
         )
+        self.add_item(self.expr)
 
-    @discord.ui.button(
-        label="Rolar D7",
-        emoji="🎲",
-        style=discord.ButtonStyle.primary
-    )
-    async def d7(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        resultado = random.randint(1, 7)
+    async def on_submit(self, interaction: discord.Interaction):
+        raw = (self.expr.value or "").lower().replace(" ", "")
+        bonus = 0
+        try:
+            if "+" in raw:
+                main, b = raw.split("+", 1)
+                bonus = int(b)
+            elif "-" in raw[1:]:
+                idx = raw.find("-", 1)
+                main, b = raw[:idx], raw[idx:]
+                bonus = int(b)
+            else:
+                main = raw
+            if "d" not in main:
+                raise ValueError
+            n, faces = main.split("d", 1)
+            n = int(n or 1)
+            faces = int(faces)
+            if n < 1 or n > 20 or faces < 2 or faces > 1000:
+                raise ValueError
+        except Exception:
+            await interaction.response.send_message(
+                "❌ Formato inválido. Use tipo: `2d8+3`, `1d20`, `3d6`.",
+                ephemeral=True
+            )
+            return
+        rolls, total = _rolar_dados(faces, n, bonus)
+        tipo = f"{n}d{faces}" + (f"{bonus:+d}" if bonus else "")
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, tipo, total, faces)
+        embed = criar_embed_rolagem(interaction.user, tipo, rolls, faces, bonus, total)
+        await interaction.response.send_message(embed=embed)
 
-        registrar_rolagem(
-            interaction.user.id,
-            interaction.user.display_name,
-            "D7",
-            resultado,
-            7
-        )
 
-        await interaction.response.send_message(
-            f"🎲 **{interaction.user.display_name}** rolou D7!\n\n"
-            f"Resultado: **{resultado}**"
-        )
+class RolagensView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
 
-    @discord.ui.button(
-        label="Histórico",
-        emoji="📜",
-        style=discord.ButtonStyle.secondary
-    )
-    async def historico(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        cursor.execute(
-            """
+    async def _rolar(self, interaction, faces, qtd=1, nome=None):
+        rolls, total = _rolar_dados(faces, qtd, 0)
+        tipo = nome or (f"{qtd}d{faces}" if qtd > 1 else f"D{faces}")
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, tipo, total, faces)
+        embed = criar_embed_rolagem(interaction.user, tipo, rolls, faces, 0, total)
+        await interaction.response.send_message(embed=embed)
+
+    @discord.ui.button(label="D4", emoji="🎲", style=discord.ButtonStyle.secondary, row=0)
+    async def d4(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 4)
+
+    @discord.ui.button(label="D6", emoji="🎲", style=discord.ButtonStyle.secondary, row=0)
+    async def d6(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 6)
+
+    @discord.ui.button(label="D7", emoji="🎲", style=discord.ButtonStyle.primary, row=0)
+    async def d7(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 7)
+
+    @discord.ui.button(label="D8", emoji="🎲", style=discord.ButtonStyle.secondary, row=0)
+    async def d8(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 8)
+
+    @discord.ui.button(label="D10", emoji="🎲", style=discord.ButtonStyle.secondary, row=0)
+    async def d10(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 10)
+
+    @discord.ui.button(label="D12", emoji="🎲", style=discord.ButtonStyle.secondary, row=1)
+    async def d12(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 12)
+
+    @discord.ui.button(label="D20", emoji="🎲", style=discord.ButtonStyle.success, row=1)
+    async def d20(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 20)
+
+    @discord.ui.button(label="2d6", emoji="🎲", style=discord.ButtonStyle.secondary, row=1)
+    async def d2d6(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 6, 2, "2d6")
+
+    @discord.ui.button(label="2d8", emoji="🎲", style=discord.ButtonStyle.secondary, row=1)
+    async def d2d8(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 8, 2, "2d8")
+
+    @discord.ui.button(label="3d6", emoji="🎲", style=discord.ButtonStyle.secondary, row=1)
+    async def d3d6(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rolar(interaction, 6, 3, "3d6")
+
+    @discord.ui.button(label="Personalizado", emoji="✨", style=discord.ButtonStyle.primary, row=2)
+    async def custom(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(RolagemCustomModal())
+
+    @discord.ui.button(label="Histórico", emoji="📜", style=discord.ButtonStyle.secondary, row=2)
+    async def historico(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cursor.execute("""
             SELECT tipo, resultado, dado, data
             FROM historico_rolagens
             WHERE user_id = ?
             ORDER BY id DESC
-            LIMIT 15
-            """,
-            (interaction.user.id,)
-        )
-
+            LIMIT 20
+        """, (interaction.user.id,))
         rolagens = cursor.fetchall()
-
         if not rolagens:
-            await interaction.response.send_message(
-                "📜 Você ainda não possui rolagens no histórico.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("📜 Você ainda não possui rolagens no histórico.", ephemeral=True)
             return
-
         texto = ""
-
-        for tipo, resultado, dado, data in rolagens:
-            texto += (
-                f"🎲 **{tipo}** → `{resultado}` "
-                f"(D{dado})\n"
-            )
-
+        for i, (tipo, resultado, dado, data) in enumerate(rolagens, 1):
+            data_txt = f" • {data}" if data else ""
+            texto += f"`{i:02d}.` **{tipo}** → **{resultado}** _(D{dado})_{data_txt}\n"
         embed = discord.Embed(
-            title="📜 HISTÓRICO DE ROLAGENS",
-            description=texto,
-            color=discord.Color.blurple()
+            title=f"📜 Histórico — {interaction.user.display_name}",
+            description=texto[:4000],
+            color=discord.Color.dark_gold()
         )
+        embed.set_footer(text=f"Últimas {len(rolagens)} rolagens • privado")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        await interaction.response.send_message(
-            embed=embed,
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="Voltar",
-        emoji="↩️",
-        style=discord.ButtonStyle.secondary
-    )
-    async def voltar(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        await interaction.response.edit_message(
-            embed=criar_embed_painel_principal(),
-            view=PainelPrincipal()
-        )
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary, row=2)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_painel_principal(), view=PainelPrincipal())
 
 
 # ==================================================
@@ -4658,34 +4744,63 @@ def criar_embed_painel_principal():
     embed = discord.Embed(
         title="🎲 TAVELADA RPG",
         description=(
-            "**Central multi-sistema da mesa.**\n\n"
-            "Escolha uma categoria abaixo:"
+            "Central multi-sistema da mesa.\n"
+            "Tudo em um só lugar: fichas, dados, combate e ferramentas de mestre.\n\n"
+            "**Escolha uma categoria:**"
         ),
         color=discord.Color.blurple()
     )
-    embed.add_field(name="📚 Sistemas", value="Tavelada • Ordem • D&D • Pathfinder • Brutal • Kids\n+ sistemas criados pela comunidade", inline=False)
-    embed.add_field(name="📖 Fichas", value="Fichas **privadas** de cada sistema", inline=False)
-    embed.add_field(name="⚔️ Combate", value="Iniciativa e turnos (Tavelada)", inline=False)
-    embed.add_field(name="🎲 Rolagens", value="Dados e histórico", inline=False)
-    embed.add_field(name="🛡️ Mestre", value="NPCs, combate, XP e ferramentas de mesa", inline=False)
+    embed.add_field(
+        name="📚 Sistemas",
+        value=(
+            "Tavelada • Ordem Paranormal • D&D • Pathfinder\n"
+            "Brutal • Kids on Bikes • **Shinobi no Sho**\n"
+            "🧩 + sistemas criados pela comunidade"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="📖 Fichas",
+        value="Abra e edite sua ficha de qualquer sistema.\n**Privadas** — só você vê.",
+        inline=False
+    )
+    embed.add_field(
+        name="⚔️ Combate",
+        value="Iniciativa, turnos e combate (Tavelada).",
+        inline=True
+    )
+    embed.add_field(
+        name="🎲 Rolagens",
+        value="D4–D20, 2d6, 2d8, 3d6 e personalizado.\nHistórico das suas jogadas.",
+        inline=True
+    )
+    embed.add_field(
+        name="🛡️ Mestre",
+        value="NPCs, combate, XP, anotações e sistemas custom.",
+        inline=False
+    )
     embed.set_footer(text="Tavelada RPG • Multi-sistema • Fichas privadas")
     return embed
 
 
 def criar_embed_sistemas():
     embed = discord.Embed(
-        title="📚 SISTEMAS",
-        description="Escolha um sistema oficial ou um **sistema custom** da comunidade.",
+        title="📚 SISTEMAS DISPONÍVEIS",
+        description=(
+            "Escolha o sistema da sessão.\n"
+            "Cada um tem **ficha própria** e **rolagens** no formato do sistema."
+        ),
         color=discord.Color.blurple()
     )
-    embed.add_field(name="📜 Tavelada", value="Sistema próprio da mesa", inline=True)
-    embed.add_field(name="👁️ Ordem", value="Investigação paranormal", inline=True)
-    embed.add_field(name="🐉 D&D", value="Fantasia clássica", inline=True)
-    embed.add_field(name="⚔️ Pathfinder", value="Fantasia tática", inline=True)
-    embed.add_field(name="🔪 Brutal", value="Slasher / sobrevivência", inline=True)
-    embed.add_field(name="🚲 Kids on Bikes", value="Mistério adolescente", inline=True)
-    embed.add_field(name="🍥 Shinobi no Sho", value="Naruto • Sistema D8", inline=True)
-    embed.add_field(name="🧩 Custom", value="Crie e use sistemas da comunidade", inline=False)
+    embed.add_field(name="📜 Tavelada", value="Sistema da mesa • D7 + perícias + combate", inline=False)
+    embed.add_field(name="👁️ Ordem Paranormal", value="Investigação • NEX • perícias • D20", inline=False)
+    embed.add_field(name="🐉 D&D 5e", value="Fantasia clássica • atributos • skills • D20", inline=False)
+    embed.add_field(name="⚔️ Pathfinder", value="Fantasia tática • atributos • skills • D20", inline=False)
+    embed.add_field(name="🔪 Brutal", value="Slasher • sobrevivência • 1d6", inline=False)
+    embed.add_field(name="🚲 Kids on Bikes", value="Mistério com jovens • dados por idade", inline=False)
+    embed.add_field(name="🍥 Shinobi no Sho", value="Naruto RPG • Sistema D8 • 2d8 + precisão", inline=False)
+    embed.add_field(name="🧩 Sistemas Custom", value="Crie o seu sistema sem precisar atualizar o bot", inline=False)
+    embed.set_footer(text="Fichas são privadas • Use Fichas no painel para editar")
     return embed
 
 
@@ -4772,10 +4887,15 @@ class PainelPrincipal(discord.ui.View):
         embed = discord.Embed(
             title="🎲 ROLAGENS",
             description=(
-                "Escolha uma ferramenta de rolagem."
+                "Role **qualquer dado** sem precisar entrar em um sistema.\n\n"
+                "**Rápidos:** D4 • D6 • D7 • D8 • D10 • D12 • D20\n"
+                "**Combos:** 2d6 • 2d8 • 3d6\n"
+                "**Personalizado:** digite tipo `2d8+3` ou `1d100`\n\n"
+                "O **histórico** guarda suas últimas jogadas (só você vê)."
             ),
-            color=discord.Color.blurple()
+            color=discord.Color.gold()
         )
+        embed.set_footer(text="Resultados públicos • Histórico privado")
 
         await interaction.response.edit_message(
             embed=embed,
@@ -4801,17 +4921,8 @@ class PainelPrincipal(discord.ui.View):
             )
             return
 
-        embed = discord.Embed(
-            title="🛡️ ESCUDO DO MESTRE",
-            description=(
-                "Área privada dos Pesquisadores.\n\n"
-                "Aqui ficam as ferramentas da mesa."
-            ),
-            color=discord.Color.dark_red()
-        )
-
         await interaction.response.send_message(
-            embed=embed,
+            embed=criar_embed_escudo_mestre(),
             view=EscudoMestre(),
             ephemeral=True
         )
@@ -4855,17 +4966,8 @@ async def mestre(
         )
         return
 
-    embed = discord.Embed(
-        title="🛡️ ESCUDO DO MESTRE",
-        description=(
-            "Área privada dos Pesquisadores.\n\n"
-            "Aqui ficam as ferramentas da mesa."
-        ),
-        color=discord.Color.dark_red()
-    )
-
     await interaction.response.send_message(
-        embed=embed,
+        embed=criar_embed_escudo_mestre(),
         view=EscudoMestre(),
         ephemeral=True
     )
