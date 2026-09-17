@@ -2400,6 +2400,437 @@ def criar_embed_ficha_kids(ficha):
     return embed
 
 
+
+# ==================================================
+# SHINOBI NO SHO (Sistema D8)
+# ==================================================
+
+SHINOBI_PERICIAS = [
+    "Acrobacia", "Arte", "Atletismo", "Ciências Naturais", "Concentração",
+    "Cultura", "Disfarces", "Escapar", "Furtividade", "Lidar com Animais",
+    "Mecanismos", "Medicina", "Ocultismo", "Prestidigitação", "Procurar",
+    "Prontidão", "Rastrear", "Venefício"
+]
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS fichas_shinobi (
+    user_id INTEGER PRIMARY KEY,
+    nome TEXT DEFAULT '',
+    cla TEXT DEFAULT '',
+    nivel_shinobi TEXT DEFAULT 'Genin',
+    nc INTEGER DEFAULT 4,
+    vila TEXT DEFAULT '',
+    forca INTEGER DEFAULT 0,
+    destreza INTEGER DEFAULT 0,
+    agilidade INTEGER DEFAULT 0,
+    percepcao INTEGER DEFAULT 0,
+    inteligencia INTEGER DEFAULT 0,
+    vigor INTEGER DEFAULT 0,
+    espirito INTEGER DEFAULT 0,
+    carisma INTEGER DEFAULT 0,
+    manipulacao INTEGER DEFAULT 0,
+    base_cc INTEGER DEFAULT 3,
+    base_cd INTEGER DEFAULT 3,
+    base_esq INTEGER DEFAULT 3,
+    base_lm INTEGER DEFAULT 3,
+    vitalidade INTEGER DEFAULT 0,
+    vitalidade_max INTEGER DEFAULT 0,
+    chakra INTEGER DEFAULT 0,
+    chakra_max INTEGER DEFAULT 0,
+    pericias TEXT DEFAULT '{}',
+    aptidoes TEXT DEFAULT '',
+    poderes TEXT DEFAULT '',
+    anotacoes TEXT DEFAULT ''
+)
+""")
+db.commit()
+
+
+def calcular_energias_shinobi(vigor, espirito, nc):
+    vigor = int(vigor or 0)
+    espirito = int(espirito or 0)
+    nc = max(4, int(nc or 4))
+    vit = 10 + 3 * vigor + 5 * nc
+    cha = 10 + 3 * espirito
+    return vit, cha
+
+
+def criar_ficha_shinobi(user_id):
+    vit, cha = calcular_energias_shinobi(0, 0, 4)
+    cursor.execute("""
+        INSERT OR IGNORE INTO fichas_shinobi (
+            user_id, vitalidade, vitalidade_max, chakra, chakra_max, pericias
+        ) VALUES (?, ?, ?, ?, ?, ?)
+    """, (user_id, vit, vit, cha, cha, json.dumps({p: 0 for p in SHINOBI_PERICIAS}, ensure_ascii=False)))
+    db.commit()
+
+
+def garantir_ficha_shinobi(user_id):
+    criar_ficha_shinobi(user_id)
+    cursor.execute("SELECT * FROM fichas_shinobi WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    cols = [d[0] for d in cursor.description]
+    ficha = dict(zip(cols, row))
+    try:
+        ficha["pericias"] = json.loads(ficha.get("pericias") or "{}")
+    except Exception:
+        ficha["pericias"] = {p: 0 for p in SHINOBI_PERICIAS}
+    for p in SHINOBI_PERICIAS:
+        ficha["pericias"].setdefault(p, 0)
+    return ficha
+
+
+def criar_embed_ficha_shinobi(ficha):
+    forca = int(ficha.get("forca") or 0)
+    destreza = int(ficha.get("destreza") or 0)
+    agilidade = int(ficha.get("agilidade") or 0)
+    percepcao = int(ficha.get("percepcao") or 0)
+    base_cc = int(ficha.get("base_cc") or 3)
+    base_cd = int(ficha.get("base_cd") or 3)
+    base_esq = int(ficha.get("base_esq") or 3)
+    base_lm = int(ficha.get("base_lm") or 3)
+    cc = base_cc + forca
+    cd = base_cd + destreza
+    esq = base_esq + agilidade
+    lm = base_lm + percepcao
+
+    embed = discord.Embed(
+        title="🍥 FICHA — SHINOBI NO SHO",
+        description=f"**{ficha.get('nome') or 'Sem nome'}**",
+        color=discord.Color.orange()
+    )
+    embed.add_field(
+        name="📋 Informações",
+        value=(
+            f"**Clã/Hijutsu:** {ficha.get('cla') or '—'}\
+"
+            f"**Nível Shinobi:** {ficha.get('nivel_shinobi') or 'Genin'}\
+"
+            f"**NC:** `{ficha.get('nc') or 4}`\
+"
+            f"**Vila:** {ficha.get('vila') or '—'}"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="⚔️ Atributos",
+        value=(
+            f"**FOR:** `{forca}`  **DES:** `{destreza}`\
+"
+            f"**AGI:** `{agilidade}`  **PER:** `{percepcao}`\
+"
+            f"**INT:** `{ficha.get('inteligencia') or 0}`  **VIG:** `{ficha.get('vigor') or 0}`\
+"
+            f"**ESP:** `{ficha.get('espirito') or 0}`"
+        ),
+        inline=True
+    )
+    embed.add_field(
+        name="🗡️ Combate",
+        value=(
+            f"**CC:** `{cc}` (base {base_cc}+FOR)\
+"
+            f"**CD:** `{cd}` (base {base_cd}+DES)\
+"
+            f"**ESQ:** `{esq}` (base {base_esq}+AGI)\
+"
+            f"**LM:** `{lm}` (base {base_lm}+PER)"
+        ),
+        inline=True
+    )
+    embed.add_field(
+        name="❤️ Energias",
+        value=(
+            f"**Vitalidade:** `{ficha.get('vitalidade')}/{ficha.get('vitalidade_max')}`\
+"
+            f"**Chakra:** `{ficha.get('chakra')}/{ficha.get('chakra_max')}`\
+"
+            f"**Carisma:** `{ficha.get('carisma') or 0}`  **Manipulação:** `{ficha.get('manipulacao') or 0}`"
+        ),
+        inline=False
+    )
+    if ficha.get("aptidoes"):
+        embed.add_field(name="✨ Aptidões", value=str(ficha["aptidoes"])[:1024], inline=False)
+    if ficha.get("poderes"):
+        embed.add_field(name="🔮 Poderes", value=str(ficha["poderes"])[:1024], inline=False)
+    if ficha.get("anotacoes"):
+        embed.add_field(name="📝 Anotações", value=str(ficha["anotacoes"])[:1024], inline=False)
+    embed.set_footer(text="Shinobi no Sho • Sistema D8 • 2d8 + precisão • Ficha privada")
+    return embed
+
+
+
+# ==================================================
+# UI — SHINOBI NO SHO
+# ==================================================
+
+class ShinobiInfoModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🍥 Informações — Shinobi")
+        f = ficha or {}
+        self.nome = discord.ui.TextInput(label="Nome", required=False, max_length=100, default=f.get("nome", "") or "")
+        self.cla = discord.ui.TextInput(label="Clã / Hijutsu", required=False, max_length=100, default=f.get("cla", "") or "")
+        self.nivel_shinobi = discord.ui.TextInput(label="Nível Shinobi", placeholder="Genin, Chuunin, Jounin...", required=False, max_length=50, default=f.get("nivel_shinobi", "Genin") or "Genin")
+        self.nc = discord.ui.TextInput(label="Nível de Campanha (NC)", required=True, max_length=5, default=str(f.get("nc") or 4))
+        self.vila = discord.ui.TextInput(label="Vila", required=False, max_length=80, default=f.get("vila", "") or "")
+        for i in [self.nome, self.cla, self.nivel_shinobi, self.nc, self.vila]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            nc = int(self.nc.value)
+            if nc < 4:
+                nc = 4
+        except ValueError:
+            await interaction.response.send_message("❌ NC precisa ser um número (mínimo 4).", ephemeral=True)
+            return
+        garantir_ficha_shinobi(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_shinobi SET nome=?, cla=?, nivel_shinobi=?, nc=?, vila=? WHERE user_id=?
+        """, (self.nome.value, self.cla.value, self.nivel_shinobi.value, nc, self.vila.value, interaction.user.id))
+        # recalcula energias
+        cursor.execute("SELECT vigor, espirito FROM fichas_shinobi WHERE user_id=?", (interaction.user.id,))
+        vig, esp = cursor.fetchone()
+        vit, cha = calcular_energias_shinobi(vig, esp, nc)
+        cursor.execute("""
+            UPDATE fichas_shinobi SET vitalidade_max=?, vitalidade=MIN(vitalidade, ?),
+            chakra_max=?, chakra=MIN(chakra, ?) WHERE user_id=?
+        """, (vit, vit, cha, cha, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_shinobi(ficha), view=ShinobiFichaView())
+
+
+class ShinobiAtributosModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="⚔️ Atributos — Shinobi")
+        f = ficha or {}
+        self.forca = discord.ui.TextInput(label="Força", required=True, default=str(f.get("forca") or 0))
+        self.destreza = discord.ui.TextInput(label="Destreza", required=True, default=str(f.get("destreza") or 0))
+        self.agilidade = discord.ui.TextInput(label="Agilidade", required=True, default=str(f.get("agilidade") or 0))
+        self.percepcao = discord.ui.TextInput(label="Percepção", required=True, default=str(f.get("percepcao") or 0))
+        self.inteligencia = discord.ui.TextInput(label="Inteligência", required=True, default=str(f.get("inteligencia") or 0))
+        for i in [self.forca, self.destreza, self.agilidade, self.percepcao, self.inteligencia]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.forca, self.destreza, self.agilidade, self.percepcao, self.inteligencia]]
+        except ValueError:
+            await interaction.response.send_message("❌ Atributos precisam ser números.", ephemeral=True)
+            return
+        garantir_ficha_shinobi(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_shinobi SET forca=?, destreza=?, agilidade=?, percepcao=?, inteligencia=?
+            WHERE user_id=?
+        """, (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_shinobi(ficha), view=ShinobiFichaView())
+
+
+class ShinobiAtributos2Modal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="⚔️ Atributos 2 — Shinobi")
+        f = ficha or {}
+        self.vigor = discord.ui.TextInput(label="Vigor", required=True, default=str(f.get("vigor") or 0))
+        self.espirito = discord.ui.TextInput(label="Espírito", required=True, default=str(f.get("espirito") or 0))
+        self.carisma = discord.ui.TextInput(label="Carisma", required=True, default=str(f.get("carisma") or 0))
+        self.manipulacao = discord.ui.TextInput(label="Manipulação", required=True, default=str(f.get("manipulacao") or 0))
+        for i in [self.vigor, self.espirito, self.carisma, self.manipulacao]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.vigor, self.espirito, self.carisma, self.manipulacao]]
+        except ValueError:
+            await interaction.response.send_message("❌ Valores precisam ser números.", ephemeral=True)
+            return
+        garantir_ficha_shinobi(interaction.user.id)
+        cursor.execute("SELECT nc FROM fichas_shinobi WHERE user_id=?", (interaction.user.id,))
+        nc = cursor.fetchone()[0]
+        vit, cha = calcular_energias_shinobi(vals[0], vals[1], nc)
+        cursor.execute("""
+            UPDATE fichas_shinobi SET vigor=?, espirito=?, carisma=?, manipulacao=?,
+            vitalidade_max=?, vitalidade=MIN(vitalidade, ?),
+            chakra_max=?, chakra=MIN(chakra, ?)
+            WHERE user_id=?
+        """, (vals[0], vals[1], vals[2], vals[3], vit, vit, cha, cha, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_shinobi(ficha), view=ShinobiFichaView())
+
+
+class ShinobiBasesModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🗡️ Bases de Combate — Shinobi")
+        f = ficha or {}
+        self.base_cc = discord.ui.TextInput(label="Base CC (padrão 3)", required=True, default=str(f.get("base_cc") or 3))
+        self.base_cd = discord.ui.TextInput(label="Base CD (padrão 3)", required=True, default=str(f.get("base_cd") or 3))
+        self.base_esq = discord.ui.TextInput(label="Base ESQ (padrão 3)", required=True, default=str(f.get("base_esq") or 3))
+        self.base_lm = discord.ui.TextInput(label="Base LM (padrão 3)", required=True, default=str(f.get("base_lm") or 3))
+        for i in [self.base_cc, self.base_cd, self.base_esq, self.base_lm]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.base_cc, self.base_cd, self.base_esq, self.base_lm]]
+        except ValueError:
+            await interaction.response.send_message("❌ Bases precisam ser números.", ephemeral=True)
+            return
+        garantir_ficha_shinobi(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_shinobi SET base_cc=?, base_cd=?, base_esq=?, base_lm=? WHERE user_id=?
+        """, (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_shinobi(ficha), view=ShinobiFichaView())
+
+
+class ShinobiTextoModal(discord.ui.Modal):
+    def __init__(self, campo, titulo, ficha=None):
+        super().__init__(title=titulo)
+        self.campo = campo
+        f = ficha or {}
+        self.texto = discord.ui.TextInput(label=titulo, style=discord.TextStyle.paragraph, required=False, max_length=1500, default=f.get(campo, "") or "")
+        self.add_item(self.texto)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        garantir_ficha_shinobi(interaction.user.id)
+        cursor.execute(f"UPDATE fichas_shinobi SET {self.campo}=? WHERE user_id=?", (self.texto.value, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_shinobi(ficha), view=ShinobiFichaView())
+
+
+class ShinobiFichaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Info", emoji="📋", style=discord.ButtonStyle.primary)
+    async def info(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_modal(ShinobiInfoModal(ficha))
+
+    @discord.ui.button(label="Atributos 1", emoji="⚔️", style=discord.ButtonStyle.primary)
+    async def atr1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_modal(ShinobiAtributosModal(ficha))
+
+    @discord.ui.button(label="Atributos 2", emoji="⚔️", style=discord.ButtonStyle.primary)
+    async def atr2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_modal(ShinobiAtributos2Modal(ficha))
+
+    @discord.ui.button(label="Bases CC/CD", emoji="🗡️", style=discord.ButtonStyle.secondary)
+    async def bases(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_modal(ShinobiBasesModal(ficha))
+
+    @discord.ui.button(label="Aptidões", emoji="✨", style=discord.ButtonStyle.secondary)
+    async def apt(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_modal(ShinobiTextoModal("aptidoes", "✨ Aptidões", ficha))
+
+    @discord.ui.button(label="Poderes", emoji="🔮", style=discord.ButtonStyle.secondary)
+    async def pod(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_modal(ShinobiTextoModal("poderes", "🔮 Poderes", ficha))
+
+    @discord.ui.button(label="Anotações", emoji="📝", style=discord.ButtonStyle.secondary)
+    async def notes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_modal(ShinobiTextoModal("anotacoes", "📝 Anotações", ficha))
+
+    @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
+    async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_shinobi(ficha), view=ShinobiFichaView())
+
+    @discord.ui.button(label="Fechar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def fechar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Ficha fechada.", embed=None, view=None)
+
+
+class ShinobiRolarSelect(discord.ui.Select):
+    def __init__(self, ficha):
+        self.ficha = ficha
+        forca = int(ficha.get("forca") or 0)
+        destreza = int(ficha.get("destreza") or 0)
+        agilidade = int(ficha.get("agilidade") or 0)
+        percepcao = int(ficha.get("percepcao") or 0)
+        cc = int(ficha.get("base_cc") or 3) + forca
+        cd = int(ficha.get("base_cd") or 3) + destreza
+        esq = int(ficha.get("base_esq") or 3) + agilidade
+        lm = int(ficha.get("base_lm") or 3) + percepcao
+        opcoes = [
+            discord.SelectOption(label=f"CC (Combate Corporal) — {cc}", value=f"cc:{cc}"),
+            discord.SelectOption(label=f"CD (Combate Distância) — {cd}", value=f"cd:{cd}"),
+            discord.SelectOption(label=f"ESQ (Esquiva) — {esq}", value=f"esq:{esq}"),
+            discord.SelectOption(label=f"LM (Ler Movimento) — {lm}", value=f"lm:{lm}"),
+            discord.SelectOption(label=f"Força — {forca}", value=f"for:{forca}"),
+            discord.SelectOption(label=f"Destreza — {destreza}", value=f"des:{destreza}"),
+            discord.SelectOption(label=f"Agilidade — {agilidade}", value=f"agi:{agilidade}"),
+            discord.SelectOption(label=f"Percepção — {percepcao}", value=f"per:{percepcao}"),
+            discord.SelectOption(label=f"Inteligência — {ficha.get('inteligencia') or 0}", value=f"int:{ficha.get('inteligencia') or 0}"),
+            discord.SelectOption(label=f"Vigor — {ficha.get('vigor') or 0}", value=f"vig:{ficha.get('vigor') or 0}"),
+            discord.SelectOption(label=f"Espírito — {ficha.get('espirito') or 0}", value=f"esp:{ficha.get('espirito') or 0}"),
+            discord.SelectOption(label="Só 2d8 (sem precisão)", value="raw:0"),
+        ]
+        super().__init__(placeholder="Escolha o que rolar (2d8 + precisão)", options=opcoes)
+
+    async def callback(self, interaction: discord.Interaction):
+        nome, precisao = self.values[0].split(":")
+        precisao = int(precisao)
+        d1, d2 = random.randint(1, 8), random.randint(1, 8)
+        dados = d1 + d2
+        total = dados + precisao
+        labels = {
+            "cc": "Combate Corporal", "cd": "Combate à Distância", "esq": "Esquiva", "lm": "Ler Movimento",
+            "for": "Força", "des": "Destreza", "agi": "Agilidade", "per": "Percepção",
+            "int": "Inteligência", "vig": "Vigor", "esp": "Espírito", "raw": "2d8"
+        }
+        critico = ""
+        if dados >= 15:
+            critico = "\
+✨ **Acerto crítico** (15-16 nos dados)!"
+        elif dados <= 3:
+            critico = "\
+💥 **Erro crítico** (2-3 nos dados)!"
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, f"Shinobi:{labels.get(nome, nome)}", total, 8)
+        embed = discord.Embed(title="🎲 ROLAGEM — SHINOBI NO SHO", color=discord.Color.orange())
+        embed.add_field(name="Teste", value=labels.get(nome, nome), inline=True)
+        embed.add_field(name="2d8", value=f"`{d1}` + `{d2}` = **{dados}**", inline=True)
+        embed.add_field(name="Resultado", value=f"**{total}**", inline=True)
+        embed.add_field(name="Cálculo", value=f"`{dados} (2d8) + {precisao} (precisão) = {total}`{critico}", inline=False)
+        await interaction.response.edit_message(embed=embed, view=ShinobiSistemaView())
+
+
+class ShinobiRolagemView(discord.ui.View):
+    def __init__(self, ficha):
+        super().__init__(timeout=180)
+        self.add_item(ShinobiRolarSelect(ficha))
+
+
+class ShinobiSistemaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
+    async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_message(embed=criar_embed_ficha_shinobi(ficha), view=ShinobiFichaView(), ephemeral=True)
+
+    @discord.ui.button(label="Rolar 2d8", emoji="🎲", style=discord.ButtonStyle.success)
+    async def rolar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.edit_message(content="Escolha o teste:", embed=None, view=ShinobiRolagemView(ficha))
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
 # ==================================================
 # UI — BRUTAL
 # ==================================================
@@ -3760,6 +4191,28 @@ class SistemasView(discord.ui.View):
         )
 
     @discord.ui.button(
+        label="Shinobi no Sho",
+        emoji="🍥",
+        style=discord.ButtonStyle.danger
+    )
+    async def shinobi(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🍥 SHINOBI NO SHO",
+                description=(
+                    "Sistema D8 — Naruto RPG.\n\n"
+                    "Ficha completa + rolagem **2d8 + precisão**."
+                ),
+                color=discord.Color.orange()
+            ),
+            view=ShinobiSistemaView()
+        )
+
+    @discord.ui.button(
         label="Sistemas Custom",
         emoji="🧩",
         style=discord.ButtonStyle.success
@@ -3999,6 +4452,23 @@ class FichasView(discord.ui.View):
         )
 
     @discord.ui.button(
+        label="Shinobi no Sho",
+        emoji="🍥",
+        style=discord.ButtonStyle.danger
+    )
+    async def shinobi(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        ficha = garantir_ficha_shinobi(interaction.user.id)
+        await interaction.response.send_message(
+            embed=criar_embed_ficha_shinobi(ficha),
+            view=ShinobiFichaView(),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
         label="Voltar",
         emoji="↩️",
         style=discord.ButtonStyle.secondary
@@ -4214,6 +4684,7 @@ def criar_embed_sistemas():
     embed.add_field(name="⚔️ Pathfinder", value="Fantasia tática", inline=True)
     embed.add_field(name="🔪 Brutal", value="Slasher / sobrevivência", inline=True)
     embed.add_field(name="🚲 Kids on Bikes", value="Mistério adolescente", inline=True)
+    embed.add_field(name="🍥 Shinobi no Sho", value="Naruto • Sistema D8", inline=True)
     embed.add_field(name="🧩 Custom", value="Crie e use sistemas da comunidade", inline=False)
     return embed
 
@@ -4235,9 +4706,7 @@ def criar_embed_fichas():
 class PainelPrincipal(discord.ui.View):
 
     def __init__(self):
-        super().__init__(
-            timeout=None
-        )
+        super().__init__(timeout=600)
 
     @discord.ui.button(
         label="Sistemas",
@@ -4358,20 +4827,11 @@ class PainelPrincipal(discord.ui.View):
     guild=GUILD
 )
 async def painel(interaction: discord.Interaction):
-    try:
-        await interaction.response.defer(ephemeral=False)
-        await interaction.followup.send(
-            embed=criar_embed_painel_principal(),
-            view=PainelPrincipal()
-        )
-    except Exception as e:
-        try:
-            await interaction.followup.send(
-                f"❌ Erro ao abrir o painel: {e}",
-                ephemeral=True
-            )
-        except:
-            print(f"Erro no /painel: {e}")
+    await interaction.response.send_message(
+        embed=criar_embed_painel_principal(),
+        view=PainelPrincipal()
+    )
+
 
 
 # ==================================================
