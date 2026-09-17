@@ -2113,6 +2113,7 @@ def criar_embed_escudo_mestre():
     embed.add_field(name="🧩 Sistemas Custom", value="Ver e criar sistemas feitos pelos jogadores.", inline=False)
     embed.add_field(name="📝 Anotações da Mesa", value="Bloco de notas compartilhado só para mestres.", inline=False)
     embed.add_field(name="👥 Fichas ativas", value="Lista quem já tem ficha em cada sistema.", inline=False)
+    embed.add_field(name="👁️ Ver ficha", value="Abre a ficha completa de um jogador (só o mestre vê).", inline=False)
     embed.set_footer(text="Visível apenas para quem tem o cargo de Pesquisador")
     return embed
 
@@ -2222,6 +2223,133 @@ class EscudoMestre(discord.ui.View):
         )
         embed.set_footer(text="Resumo para o mestre • privado")
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Ver ficha", emoji="👁️", style=discord.ButtonStyle.success)
+    async def ver_ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title="👁️ Ver ficha de jogador",
+            description="Escolha o **sistema**. Depois escolha o **jogador**.\nA ficha abre só para você.",
+            color=discord.Color.dark_teal()
+        )
+        await interaction.response.send_message(embed=embed, view=MestreVerSistemaView(), ephemeral=True)
+
+
+# ==================================================
+# MESTRE — VER FICHA DE JOGADOR
+# ==================================================
+
+SISTEMAS_MESTRE_FICHA = [
+    ("tavelada", "📜 Tavelada", "fichas"),
+    ("ordem", "👁️ Ordem Paranormal", "fichas_ordem"),
+    ("dnd", "🐉 D&D", "fichas_dnd"),
+    ("pathfinder", "⚔️ Pathfinder", "fichas_pathfinder"),
+    ("brutal", "🔪 Brutal", "fichas_brutal"),
+    ("kids", "🚲 Kids on Bikes", "fichas_kids"),
+    ("shinobi", "🍥 Shinobi no Sho", "fichas_shinobi"),
+]
+
+
+def listar_fichas_sistema(tabela):
+    try:
+        cursor.execute(f"SELECT user_id, nome FROM {tabela}")
+        return cursor.fetchall()
+    except Exception:
+        return []
+
+
+def embed_ficha_mestre(sistema, user_id):
+    if sistema == "tavelada":
+        ficha = buscar_ficha_dict(user_id)
+        if not ficha:
+            return None
+        return criar_embed_ficha(ficha)
+    if sistema == "ordem":
+        return criar_embed_ficha_ordem(garantir_ficha_ordem(user_id))
+    if sistema == "dnd":
+        return criar_embed_ficha_dnd(garantir_ficha_dnd(user_id))
+    if sistema == "pathfinder":
+        return criar_embed_ficha_pathfinder(garantir_ficha_pathfinder(user_id))
+    if sistema == "brutal":
+        return criar_embed_ficha_brutal(garantir_ficha_brutal(user_id))
+    if sistema == "kids":
+        return criar_embed_ficha_kids(garantir_ficha_kids(user_id))
+    if sistema == "shinobi":
+        return criar_embed_ficha_shinobi(garantir_ficha_shinobi(user_id))
+    return None
+
+
+class MestreVerSistemaSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label=nome[:100], value=key, description=f"Tabela {tabela}")
+            for key, nome, tabela in SISTEMAS_MESTRE_FICHA
+        ]
+        super().__init__(placeholder="Escolha o sistema...", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        sistema = self.values[0]
+        tabela = next(t for k, n, t in SISTEMAS_MESTRE_FICHA if k == sistema)
+        rows = listar_fichas_sistema(tabela)
+        if not rows:
+            await interaction.response.send_message(
+                f"Nenhuma ficha nesse sistema ainda.",
+                ephemeral=True
+            )
+            return
+        nome_sis = next(n for k, n, t in SISTEMAS_MESTRE_FICHA if k == sistema)
+        embed = discord.Embed(
+            title=f"👁️ {nome_sis}",
+            description="Escolha o jogador para ver a ficha.",
+            color=discord.Color.dark_teal()
+        )
+        await interaction.response.edit_message(
+            embed=embed,
+            view=MestreVerJogadorView(sistema, rows)
+        )
+
+
+class MestreVerSistemaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.add_item(MestreVerSistemaSelect())
+
+
+class MestreVerJogadorSelect(discord.ui.Select):
+    def __init__(self, sistema, rows):
+        self.sistema = sistema
+        options = []
+        for uid, nome in rows[:25]:
+            label = (nome or f"Jogador {uid}")[:100]
+            options.append(discord.SelectOption(
+                label=label,
+                value=str(uid),
+                description=f"ID {uid}"
+            ))
+        super().__init__(placeholder="Escolha o jogador...", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        user_id = int(self.values[0])
+        embed = embed_ficha_mestre(self.sistema, user_id)
+        if embed is None:
+            await interaction.response.send_message("Ficha não encontrada.", ephemeral=True)
+            return
+        embed.set_footer(text=f"Vista do mestre • user_id {user_id} • privada")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class MestreVerJogadorView(discord.ui.View):
+    def __init__(self, sistema, rows):
+        super().__init__(timeout=300)
+        self.add_item(MestreVerJogadorSelect(sistema, rows))
 
 
 # ==================================================
