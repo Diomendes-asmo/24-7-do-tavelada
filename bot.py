@@ -2199,6 +2199,7 @@ class EscudoMestre(discord.ui.View):
             ("Brutal", "fichas_brutal", "nome"),
             ("Kids", "fichas_kids", "nome"),
             ("Shinobi", "fichas_shinobi", "nome"),
+            ("Vampiro", "fichas_vampiro", "nome"),
         ]
         for sistema, tabela, col in tabelas:
             try:
@@ -2249,6 +2250,7 @@ SISTEMAS_MESTRE_FICHA = [
     ("brutal", "🔪 Brutal", "fichas_brutal"),
     ("kids", "🚲 Kids on Bikes", "fichas_kids"),
     ("shinobi", "🍥 Shinobi no Sho", "fichas_shinobi"),
+    ("vampiro", "🦇 Vampiro", "fichas_vampiro"),
 ]
 
 
@@ -2278,6 +2280,8 @@ def embed_ficha_mestre(sistema, user_id):
         return criar_embed_ficha_kids(garantir_ficha_kids(user_id))
     if sistema == "shinobi":
         return criar_embed_ficha_shinobi(garantir_ficha_shinobi(user_id))
+    if sistema == "vampiro":
+        return criar_embed_ficha_vampiro(garantir_ficha_vampiro(user_id))
     return None
 
 
@@ -4005,6 +4009,360 @@ class PfSistemaView(discord.ui.View):
 
 
 
+
+# ==================================================
+# VAMPIRO: A MÁSCARA (Storyteller / d10)
+# ==================================================
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS fichas_vampiro (
+    user_id INTEGER PRIMARY KEY,
+    nome TEXT DEFAULT '',
+    cla TEXT DEFAULT '',
+    geracao INTEGER DEFAULT 13,
+    conceito TEXT DEFAULT '',
+    natureza TEXT DEFAULT '',
+    comportamento TEXT DEFAULT '',
+    forca INTEGER DEFAULT 1,
+    destreza INTEGER DEFAULT 1,
+    vigor INTEGER DEFAULT 1,
+    carisma INTEGER DEFAULT 1,
+    manipulacao INTEGER DEFAULT 1,
+    aparencia INTEGER DEFAULT 1,
+    percepcao INTEGER DEFAULT 1,
+    inteligencia INTEGER DEFAULT 1,
+    raciocinio INTEGER DEFAULT 1,
+    sangue INTEGER DEFAULT 10,
+    sangue_max INTEGER DEFAULT 10,
+    vontade INTEGER DEFAULT 5,
+    vontade_max INTEGER DEFAULT 5,
+    humanidade INTEGER DEFAULT 7,
+    disciplinas TEXT DEFAULT '',
+    habilidades TEXT DEFAULT '',
+    anotacoes TEXT DEFAULT ''
+)
+""")
+db.commit()
+
+
+def criar_ficha_vampiro(user_id):
+    cursor.execute("""
+        INSERT OR IGNORE INTO fichas_vampiro (user_id) VALUES (?)
+    """, (user_id,))
+    db.commit()
+
+
+def garantir_ficha_vampiro(user_id):
+    criar_ficha_vampiro(user_id)
+    cursor.execute("SELECT * FROM fichas_vampiro WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    cols = [d[0] for d in cursor.description]
+    return dict(zip(cols, row))
+
+
+def criar_embed_ficha_vampiro(ficha):
+    embed = discord.Embed(
+        title="🦇 FICHA — VAMPIRO: A MÁSCARA",
+        description=f"**{ficha.get('nome') or 'Sem nome'}**",
+        color=discord.Color.dark_green()
+    )
+    embed.add_field(
+        name="📋 Identidade",
+        value=(
+            f"**Clã:** {ficha.get('cla') or '—'}\
+"
+            f"**Geração:** `{ficha.get('geracao') or 13}`\
+"
+            f"**Conceito:** {ficha.get('conceito') or '—'}\
+"
+            f"**Natureza / Comportamento:** {ficha.get('natureza') or '—'} / {ficha.get('comportamento') or '—'}"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="💪 Físicos",
+        value=f"**FOR** `{ficha.get('forca') or 1}`  **DES** `{ficha.get('destreza') or 1}`  **VIG** `{ficha.get('vigor') or 1}`",
+        inline=True
+    )
+    embed.add_field(
+        name="🗣️ Sociais",
+        value=f"**CAR** `{ficha.get('carisma') or 1}`  **MAN** `{ficha.get('manipulacao') or 1}`  **APA** `{ficha.get('aparencia') or 1}`",
+        inline=True
+    )
+    embed.add_field(
+        name="🧠 Mentais",
+        value=f"**PER** `{ficha.get('percepcao') or 1}`  **INT** `{ficha.get('inteligencia') or 1}`  **RAC** `{ficha.get('raciocinio') or 1}`",
+        inline=True
+    )
+    embed.add_field(
+        name="🩸 Recursos",
+        value=(
+            f"**Sangue:** `{ficha.get('sangue')}/{ficha.get('sangue_max')}`\
+"
+            f"**Força de Vontade:** `{ficha.get('vontade')}/{ficha.get('vontade_max')}`\
+"
+            f"**Humanidade:** `{ficha.get('humanidade') or 7}`"
+        ),
+        inline=False
+    )
+    if ficha.get("disciplinas"):
+        embed.add_field(name="🩸 Disciplinas", value=str(ficha["disciplinas"])[:1024], inline=False)
+    if ficha.get("habilidades"):
+        embed.add_field(name="📚 Habilidades", value=str(ficha["habilidades"])[:1024], inline=False)
+    if ficha.get("anotacoes"):
+        embed.add_field(name="📝 Anotações", value=str(ficha["anotacoes"])[:1024], inline=False)
+    embed.set_footer(text="Vampiro: A Máscara • Parada de dados d10 • Ficha privada")
+    return embed
+
+
+class VampInfoModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🦇 Identidade — Vampiro")
+        f = ficha or {}
+        self.nome = discord.ui.TextInput(label="Nome", required=False, max_length=100, default=f.get("nome", "") or "")
+        self.cla = discord.ui.TextInput(label="Clã", required=False, max_length=80, default=f.get("cla", "") or "")
+        self.geracao = discord.ui.TextInput(label="Geração", required=True, default=str(f.get("geracao") or 13))
+        self.conceito = discord.ui.TextInput(label="Conceito", required=False, max_length=100, default=f.get("conceito", "") or "")
+        self.natureza = discord.ui.TextInput(label="Natureza / Comportamento", required=False, max_length=120, default=f"{f.get('natureza') or ''}" or "")
+        for i in [self.nome, self.cla, self.geracao, self.conceito, self.natureza]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            ger = int(self.geracao.value)
+        except ValueError:
+            await interaction.response.send_message("❌ Geração precisa ser número.", ephemeral=True)
+            return
+        nat = self.natureza.value or ""
+        natureza, comportamento = nat, ""
+        if "/" in nat:
+            natureza, comportamento = [p.strip() for p in nat.split("/", 1)]
+        garantir_ficha_vampiro(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_vampiro SET nome=?, cla=?, geracao=?, conceito=?, natureza=?, comportamento=?
+            WHERE user_id=?
+        """, (self.nome.value, self.cla.value, ger, self.conceito.value, natureza, comportamento, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_vampiro(ficha), view=VampFichaView())
+
+
+class VampFisicosModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="💪 Atributos Físicos")
+        f = ficha or {}
+        self.forca = discord.ui.TextInput(label="Força", required=True, default=str(f.get("forca") or 1))
+        self.destreza = discord.ui.TextInput(label="Destreza", required=True, default=str(f.get("destreza") or 1))
+        self.vigor = discord.ui.TextInput(label="Vigor", required=True, default=str(f.get("vigor") or 1))
+        for i in [self.forca, self.destreza, self.vigor]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.forca, self.destreza, self.vigor]]
+        except ValueError:
+            await interaction.response.send_message("❌ Números apenas.", ephemeral=True)
+            return
+        garantir_ficha_vampiro(interaction.user.id)
+        cursor.execute("UPDATE fichas_vampiro SET forca=?, destreza=?, vigor=? WHERE user_id=?", (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_vampiro(ficha), view=VampFichaView())
+
+
+class VampSociaisModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🗣️ Atributos Sociais")
+        f = ficha or {}
+        self.carisma = discord.ui.TextInput(label="Carisma", required=True, default=str(f.get("carisma") or 1))
+        self.manipulacao = discord.ui.TextInput(label="Manipulação", required=True, default=str(f.get("manipulacao") or 1))
+        self.aparencia = discord.ui.TextInput(label="Aparência", required=True, default=str(f.get("aparencia") or 1))
+        for i in [self.carisma, self.manipulacao, self.aparencia]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.carisma, self.manipulacao, self.aparencia]]
+        except ValueError:
+            await interaction.response.send_message("❌ Números apenas.", ephemeral=True)
+            return
+        garantir_ficha_vampiro(interaction.user.id)
+        cursor.execute("UPDATE fichas_vampiro SET carisma=?, manipulacao=?, aparencia=? WHERE user_id=?", (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_vampiro(ficha), view=VampFichaView())
+
+
+class VampMentaisModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🧠 Atributos Mentais")
+        f = ficha or {}
+        self.percepcao = discord.ui.TextInput(label="Percepção", required=True, default=str(f.get("percepcao") or 1))
+        self.inteligencia = discord.ui.TextInput(label="Inteligência", required=True, default=str(f.get("inteligencia") or 1))
+        self.raciocinio = discord.ui.TextInput(label="Raciocínio", required=True, default=str(f.get("raciocinio") or 1))
+        for i in [self.percepcao, self.inteligencia, self.raciocinio]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.percepcao, self.inteligencia, self.raciocinio]]
+        except ValueError:
+            await interaction.response.send_message("❌ Números apenas.", ephemeral=True)
+            return
+        garantir_ficha_vampiro(interaction.user.id)
+        cursor.execute("UPDATE fichas_vampiro SET percepcao=?, inteligencia=?, raciocinio=? WHERE user_id=?", (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_vampiro(ficha), view=VampFichaView())
+
+
+class VampRecursosModal(discord.ui.Modal):
+    def __init__(self, ficha=None):
+        super().__init__(title="🩸 Sangue / Vontade / Humanidade")
+        f = ficha or {}
+        self.sangue = discord.ui.TextInput(label="Sangue atual", required=True, default=str(f.get("sangue") or 10))
+        self.sangue_max = discord.ui.TextInput(label="Sangue máximo", required=True, default=str(f.get("sangue_max") or 10))
+        self.vontade = discord.ui.TextInput(label="Força de Vontade atual", required=True, default=str(f.get("vontade") or 5))
+        self.vontade_max = discord.ui.TextInput(label="Força de Vontade máxima", required=True, default=str(f.get("vontade_max") or 5))
+        self.humanidade = discord.ui.TextInput(label="Humanidade", required=True, default=str(f.get("humanidade") or 7))
+        for i in [self.sangue, self.sangue_max, self.vontade, self.vontade_max, self.humanidade]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            vals = [int(x.value) for x in [self.sangue, self.sangue_max, self.vontade, self.vontade_max, self.humanidade]]
+        except ValueError:
+            await interaction.response.send_message("❌ Números apenas.", ephemeral=True)
+            return
+        garantir_ficha_vampiro(interaction.user.id)
+        cursor.execute("""
+            UPDATE fichas_vampiro SET sangue=?, sangue_max=?, vontade=?, vontade_max=?, humanidade=?
+            WHERE user_id=?
+        """, (*vals, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_vampiro(ficha), view=VampFichaView())
+
+
+class VampTextoModal(discord.ui.Modal):
+    def __init__(self, campo, titulo, ficha=None):
+        super().__init__(title=titulo)
+        self.campo = campo
+        f = ficha or {}
+        self.texto = discord.ui.TextInput(label=titulo, style=discord.TextStyle.paragraph, required=False, max_length=1500, default=f.get(campo, "") or "")
+        self.add_item(self.texto)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        garantir_ficha_vampiro(interaction.user.id)
+        cursor.execute(f"UPDATE fichas_vampiro SET {self.campo}=? WHERE user_id=?", (self.texto.value, interaction.user.id))
+        db.commit()
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_vampiro(ficha), view=VampFichaView())
+
+
+class VampFichaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Identidade", emoji="📋", style=discord.ButtonStyle.primary)
+    async def info(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampInfoModal(garantir_ficha_vampiro(interaction.user.id)))
+
+    @discord.ui.button(label="Físicos", emoji="💪", style=discord.ButtonStyle.primary)
+    async def fis(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampFisicosModal(garantir_ficha_vampiro(interaction.user.id)))
+
+    @discord.ui.button(label="Sociais", emoji="🗣️", style=discord.ButtonStyle.primary)
+    async def soc(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampSociaisModal(garantir_ficha_vampiro(interaction.user.id)))
+
+    @discord.ui.button(label="Mentais", emoji="🧠", style=discord.ButtonStyle.primary)
+    async def men(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampMentaisModal(garantir_ficha_vampiro(interaction.user.id)))
+
+    @discord.ui.button(label="Sangue/Vontade", emoji="🩸", style=discord.ButtonStyle.danger)
+    async def rec(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampRecursosModal(garantir_ficha_vampiro(interaction.user.id)))
+
+    @discord.ui.button(label="Disciplinas", emoji="🩸", style=discord.ButtonStyle.secondary)
+    async def disc(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampTextoModal("disciplinas", "🩸 Disciplinas", garantir_ficha_vampiro(interaction.user.id)))
+
+    @discord.ui.button(label="Habilidades", emoji="📚", style=discord.ButtonStyle.secondary)
+    async def hab(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampTextoModal("habilidades", "📚 Habilidades", garantir_ficha_vampiro(interaction.user.id)))
+
+    @discord.ui.button(label="Anotações", emoji="📝", style=discord.ButtonStyle.secondary)
+    async def notes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampTextoModal("anotacoes", "📝 Anotações", garantir_ficha_vampiro(interaction.user.id)))
+
+    @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.success)
+    async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.edit_message(embed=criar_embed_ficha_vampiro(ficha), view=VampFichaView())
+
+    @discord.ui.button(label="Fechar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def fechar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Ficha fechada.", embed=None, view=None)
+
+
+class VampTesteModal(discord.ui.Modal):
+    def __init__(self):
+        super().__init__(title="🎲 Teste Storyteller (d10)")
+        self.parada = discord.ui.TextInput(label="Parada de dados", placeholder="Ex: 6 (Atributo+Habilidade)", required=True, max_length=3)
+        self.dificuldade = discord.ui.TextInput(label="Dificuldade", placeholder="Padrão 6", required=False, max_length=2, default="6")
+        self.descricao = discord.ui.TextInput(label="O que está testando?", required=False, max_length=100)
+        for i in [self.parada, self.dificuldade, self.descricao]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            n = int(self.parada.value)
+            dif = int(self.dificuldade.value or 6)
+            if n < 1 or n > 30 or dif < 2 or dif > 10:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message("❌ Parada 1–30 e dificuldade 2–10.", ephemeral=True)
+            return
+        rolls = [random.randint(1, 10) for _ in range(n)]
+        sucessos = sum(1 for r in rolls if r >= dif)
+        uns = sum(1 for r in rolls if r == 1)
+        if sucessos == 0 and uns > 0:
+            resultado = "💥 **Falha crítica** (só 1s, sem sucessos)"
+        elif sucessos == 0:
+            resultado = "❌ **Falha**"
+        else:
+            resultado = f"✅ **{sucessos} sucesso(s)**"
+        rolls_txt = ", ".join(str(r) for r in rolls)
+        desc = self.descricao.value or "Teste"
+        registrar_rolagem(interaction.user.id, interaction.user.display_name, f"Vamp:{desc}", sucessos, 10)
+        embed = discord.Embed(title="🎲 TESTE — VAMPIRO", color=discord.Color.dark_green())
+        embed.add_field(name="Ação", value=desc, inline=False)
+        embed.add_field(name="Parada", value=f"`{n}` d10 (dif {dif})", inline=True)
+        embed.add_field(name="Dados", value=f"`{rolls_txt}`", inline=False)
+        embed.add_field(name="Resultado", value=resultado, inline=False)
+        embed.set_footer(text="Storyteller System • sucesso = dado ≥ dificuldade")
+        await interaction.response.send_message(embed=embed)
+
+
+class VampSistemaView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+
+    @discord.ui.button(label="Minha Ficha", emoji="📖", style=discord.ButtonStyle.primary)
+    async def ficha(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.send_message(embed=criar_embed_ficha_vampiro(ficha), view=VampFichaView(), ephemeral=True)
+
+    @discord.ui.button(label="Teste d10", emoji="🎲", style=discord.ButtonStyle.success)
+    async def teste(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(VampTesteModal())
+
+    @discord.ui.button(label="Voltar", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def voltar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_sistemas(), view=SistemasView())
+
+
 # ==================================================
 # SISTEMAS CUSTOM + ANOTAÇÕES
 # ==================================================
@@ -4466,6 +4824,28 @@ class SistemasView(discord.ui.View):
         )
 
     @discord.ui.button(
+        label="Vampiro",
+        emoji="🦇",
+        style=discord.ButtonStyle.danger
+    )
+    async def vampiro(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="🦇 VAMPIRO: A MÁSCARA",
+                description=(
+                    "Storyteller System.\n\n"
+                    "Ficha completa + teste **d10** (parada × dificuldade)."
+                ),
+                color=discord.Color.dark_green()
+            ),
+            view=VampSistemaView()
+        )
+
+    @discord.ui.button(
         label="Sistemas Custom",
         emoji="🧩",
         style=discord.ButtonStyle.success
@@ -4718,6 +5098,23 @@ class FichasView(discord.ui.View):
         await interaction.response.send_message(
             embed=criar_embed_ficha_shinobi(ficha),
             view=ShinobiFichaView(),
+            ephemeral=True
+        )
+
+    @discord.ui.button(
+        label="Vampiro",
+        emoji="🦇",
+        style=discord.ButtonStyle.danger
+    )
+    async def vampiro(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        ficha = garantir_ficha_vampiro(interaction.user.id)
+        await interaction.response.send_message(
+            embed=criar_embed_ficha_vampiro(ficha),
+            view=VampFichaView(),
             ephemeral=True
         )
 
@@ -5029,6 +5426,7 @@ def criar_embed_sistemas():
     embed.add_field(name="🔪 Brutal", value="Slasher • sobrevivência • 1d6", inline=False)
     embed.add_field(name="🚲 Kids on Bikes", value="Mistério com jovens • dados por idade", inline=False)
     embed.add_field(name="🍥 Shinobi no Sho", value="Naruto RPG • Sistema D8 • 2d8 + precisão", inline=False)
+    embed.add_field(name="🦇 Vampiro: A Máscara", value="Storyteller • d10 • clãs e sangue", inline=False)
     embed.add_field(name="🧩 Sistemas Custom", value="Crie o seu sistema sem precisar atualizar o bot", inline=False)
     embed.set_footer(text="Fichas são privadas • Use Fichas no painel para editar")
     return embed
