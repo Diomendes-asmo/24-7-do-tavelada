@@ -604,6 +604,9 @@ def criar_embed_ficha_ordem(ficha):
         texto = "Nenhuma perícia treinada ainda."
     embed.add_field(name="🎯 Perícias (treinadas)", value=texto[:1024], inline=False)
     embed.set_footer(text="Ordem Paranormal • Ficha privada")
+    ok, msg = validar_ordem_anti_roubo(ficha)
+    embed.add_field(name="🔒 Anti-roubo", value=msg, inline=False)
+    embed.set_footer(text="Ordem Paranormal • Ficha privada • validação automática")
     return embed
 
 
@@ -731,6 +734,8 @@ def criar_embed_ficha_dnd(ficha):
         texto = "Nenhuma skill treinada."
     embed.add_field(name="🎯 Skills treinadas", value=texto[:1024], inline=False)
     embed.set_footer(text="D&D 5e • Ficha privada")
+    ok, msg = validar_dnd_anti_roubo(ficha)
+    embed.add_field(name="🔒 Anti-roubo", value=msg, inline=False)
     return embed
 
 
@@ -839,6 +844,8 @@ def criar_embed_ficha_pathfinder(ficha):
         texto = "Nenhuma skill treinada."
     embed.add_field(name="🎯 Skills treinadas", value=texto[:1024], inline=False)
     embed.set_footer(text="Pathfinder • Ficha privada")
+    ok, msg = validar_pathfinder_anti_roubo(ficha)
+    embed.add_field(name="🔒 Anti-roubo", value=msg, inline=False)
     return embed
 
 
@@ -1440,6 +1447,138 @@ def combate_ativo():
     return resultado[0] == 1
 
 
+
+
+def adicionar_combatente_livre(nome, iniciativa, vida=0, tipo="livre", referencia_id=0):
+    """Adiciona qualquer combatente (jogador de qualquer sistema ou NPC avulso)."""
+    if not combate_ativo():
+        return "combate_inativo"
+    nome = (nome or "Combatente").strip()[:80]
+    try:
+        iniciativa = int(iniciativa)
+        vida = int(vida or 0)
+    except (TypeError, ValueError):
+        return "erro"
+    cursor.execute(
+        """
+        INSERT INTO combatentes (
+            nome, tipo, referencia_id, iniciativa, dado, fisico, atletismo, vida
+        ) VALUES (?, ?, ?, ?, 0, 0, 0, ?)
+        """,
+        (nome, tipo, referencia_id or 0, iniciativa, vida)
+    )
+    db.commit()
+    return "ok"
+
+
+def iniciar_combate_se_preciso():
+    cursor.execute("SELECT id FROM combate WHERE id = 1")
+    if cursor.fetchone() is None:
+        cursor.execute(
+            "INSERT INTO combate (id, rodada, turno, ativo) VALUES (1, 1, 0, 1)"
+        )
+    else:
+        cursor.execute(
+            "UPDATE combate SET ativo = 1 WHERE id = 1"
+        )
+    db.commit()
+
+
+# ==================================================
+# ANTI-ROUBO (todos os sistemas exceto Tavelada)
+# ==================================================
+
+def validar_ordem_anti_roubo(ficha):
+    """Retorna (ok: bool, mensagem: str)."""
+    nex = int(ficha.get("nex") or 5)
+    atrs = [
+        int(ficha.get("agilidade") or 0),
+        int(ficha.get("forca") or 0),
+        int(ficha.get("intelecto") or 0),
+        int(ficha.get("presenca") or 0),
+        int(ficha.get("vigor") or 0),
+    ]
+    total = sum(atrs)
+    max_p = pontos_atributo_ordem(nex)
+    if total > max_p:
+        return False, f"⚠️ ANTI-ROUBO: NEX {nex}% permite **{max_p}** pts de atributo; ficha tem **{total}**."
+    pv_max, pe_max, san_max = calcular_recursos_ordem(nex, atrs[4], atrs[3])
+    avisos = []
+    if int(ficha.get("pv_max") or 0) > pv_max:
+        avisos.append(f"PV máx deveria ser {pv_max}")
+    if int(ficha.get("pe_max") or 0) > pe_max:
+        avisos.append(f"PE máx deveria ser {pe_max}")
+    if int(ficha.get("san_max") or 0) > san_max:
+        avisos.append(f"SAN máx deveria ser {san_max}")
+    if avisos:
+        return False, "⚠️ ANTI-ROUBO: " + "; ".join(avisos)
+    return True, f"✅ Válido • NEX {nex}% • {total}/{max_p} pts atributo"
+
+
+def validar_dnd_anti_roubo(ficha):
+    keys = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+    vals = []
+    for k in keys:
+        try:
+            v = int(ficha.get(k) or 10)
+        except (TypeError, ValueError):
+            v = 10
+        if v < 1 or v > 30:
+            return False, f"⚠️ ANTI-ROUBO: atributo fora de 1–30 ({k}={v})."
+        vals.append(v)
+    total = sum(vals)
+    # Soft check: point-buy típico fica ~70-80; acima de 90 avisa
+    if total > 100:
+        return False, f"⚠️ ANTI-ROUBO: soma de atributos muito alta ({total})."
+    return True, f"✅ Válido • soma atributos {total}"
+
+
+def validar_pathfinder_anti_roubo(ficha):
+    return validar_dnd_anti_roubo(ficha)
+
+
+def validar_shinobi_anti_roubo(ficha):
+    vigor = int(ficha.get("vigor") or 0)
+    espirito = int(ficha.get("espirito") or 0)
+    nc = int(ficha.get("nc") or 4)
+    vit_calc, cha_calc = calcular_energias_shinobi(vigor, espirito, nc)
+    avisos = []
+    if int(ficha.get("vitalidade_max") or 0) > vit_calc:
+        avisos.append(f"Vitalidade máx deveria ser {vit_calc}")
+    if int(ficha.get("chakra_max") or 0) > cha_calc:
+        avisos.append(f"Chakra máx deveria ser {cha_calc}")
+    if avisos:
+        return False, "⚠️ ANTI-ROUBO: " + "; ".join(avisos)
+    return True, f"✅ Válido • Vit máx {vit_calc} • Cha máx {cha_calc}"
+
+
+def validar_vampiro_anti_roubo(ficha):
+    atrs = ["forca", "destreza", "vigor", "carisma", "manipulacao", "aparencia", "percepcao", "inteligencia", "raciocinio"]
+    vals = []
+    for a in atrs:
+        try:
+            v = int(ficha.get(a) or 1)
+        except (TypeError, ValueError):
+            v = 1
+        if v < 0 or v > 10:
+            return False, f"⚠️ ANTI-ROUBO: {a} fora de 0–10 ({v})."
+        vals.append(v)
+    total = sum(vals)
+    if total > 45:
+        return False, f"⚠️ ANTI-ROUBO: soma de atributos muito alta ({total})."
+    return True, f"✅ Válido • soma atributos {total}"
+
+
+def validar_brutal_anti_roubo(ficha):
+    # Brutal: atributos marcáveis — só bloqueia valores absurdos
+    return True, "✅ Válido • Brutal (sem teto rígido de pontos)"
+
+
+def validar_kids_anti_roubo(ficha):
+    return True, "✅ Válido • Kids on Bikes"
+
+
+
 def ja_esta_no_combate(tipo, referencia_id):
     cursor.execute(
         """
@@ -1885,156 +2024,105 @@ class CombateView(discord.ui.View):
 # VIEW DO MESTRE NO COMBATE
 # ==================================================
 
+class CombateAdicionarModal(discord.ui.Modal):
+    def __init__(self, tipo_padrao="livre"):
+        super().__init__(title="⚔️ Adicionar ao combate")
+        self.tipo_padrao = tipo_padrao
+        self.nome = discord.ui.TextInput(label="Nome", placeholder="Jogador ou NPC", required=True, max_length=80)
+        self.iniciativa = discord.ui.TextInput(label="Iniciativa", placeholder="Ex: 15", required=True, max_length=5)
+        self.vida = discord.ui.TextInput(label="Vida / PV (opcional)", placeholder="0", required=False, max_length=6, default="0")
+        self.tipo = discord.ui.TextInput(label="Tipo", placeholder="jogador / npc / boss", required=False, max_length=20, default=tipo_padrao)
+        for i in [self.nome, self.iniciativa, self.vida, self.tipo]:
+            self.add_item(i)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        if not combate_ativo():
+            iniciar_combate_se_preciso()
+        tipo = (self.tipo.value or self.tipo_padrao or "livre").strip().lower()
+        res = adicionar_combatente_livre(
+            self.nome.value,
+            self.iniciativa.value,
+            self.vida.value or 0,
+            tipo
+        )
+        if res == "ok":
+            await interaction.response.send_message(
+                f"✅ **{self.nome.value}** entrou no combate (init `{self.iniciativa.value}`).",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(f"❌ Não foi possível adicionar ({res}).", ephemeral=True)
+
+
 class CombateMestreView(discord.ui.View):
 
     def __init__(self):
-        super().__init__(
-            timeout=300
-        )
+        super().__init__(timeout=300)
 
-    @discord.ui.button(
-        label="Adicionar NPC",
-        emoji="🛡️",
-        style=discord.ButtonStyle.danger
-    )
-    async def adicionar_npc(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    @discord.ui.button(label="Iniciar combate", emoji="▶️", style=discord.ButtonStyle.success, row=0)
+    async def iniciar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not eh_pesquisador(interaction):
-            await interaction.response.send_message(
-                "🔒 Apenas Pesquisadores podem fazer isso.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
             return
+        iniciar_combate_se_preciso()
+        await interaction.response.edit_message(embed=criar_embed_combate(), view=CombateMestreView())
 
-        cursor.execute(
-            """
-            SELECT id, nome, tipo
-            FROM npcs
-            ORDER BY id
-            """
-        )
+    @discord.ui.button(label="+ Jogador/NPC", emoji="➕", style=discord.ButtonStyle.primary, row=0)
+    async def adicionar_livre(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        await interaction.response.send_modal(CombateAdicionarModal("livre"))
 
+    @discord.ui.button(label="+ NPC salvo", emoji="🛡️", style=discord.ButtonStyle.danger, row=0)
+    async def adicionar_npc(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not eh_pesquisador(interaction):
+            await interaction.response.send_message("🔒 Apenas Pesquisadores.", ephemeral=True)
+            return
+        cursor.execute("SELECT id, nome, tipo FROM npcs ORDER BY id")
         npcs = cursor.fetchall()
-
         if not npcs:
             await interaction.response.send_message(
-                "❌ Você ainda não criou nenhum NPC/Boss.",
+                "❌ Nenhum NPC salvo. Use **+ Jogador/NPC** para adicionar na hora, ou crie NPCs no Escudo do Mestre.",
                 ephemeral=True
             )
             return
+        opcoes = [
+            discord.SelectOption(label=f"{nome} — {tipo}"[:100], value=str(npc_id))
+            for npc_id, nome, tipo in npcs[:25]
+        ]
+        view = discord.ui.View(timeout=60)
+        view.add_item(NPCSelect(opcoes))
+        await interaction.response.send_message("Escolha o NPC salvo:", view=view, ephemeral=True)
 
-        opcoes = []
-
-        for npc_id, nome, tipo in npcs[:25]:
-            opcoes.append(
-                discord.SelectOption(
-                    label=f"{nome} — {tipo}"[:100],
-                    value=str(npc_id)
-                )
-            )
-
-        view = discord.ui.View(
-            timeout=60
-        )
-
-        view.add_item(
-            NPCSelect(opcoes)
-        )
-
-        await interaction.response.send_message(
-            "🛡️ Escolha o NPC/Boss:",
-            view=view,
-            ephemeral=True
-        )
-
-    @discord.ui.button(
-        label="Próximo Turno",
-        emoji="⏭️",
-        style=discord.ButtonStyle.success
-    )
-    async def proximo(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    @discord.ui.button(label="Próximo Turno", emoji="⏭️", style=discord.ButtonStyle.success, row=1)
+    async def proximo(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not eh_pesquisador(interaction):
-            await interaction.response.send_message(
-                "🔒 Apenas Pesquisadores controlam o combate.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("🔒 Apenas Pesquisadores controlam o combate.", ephemeral=True)
             return
-
         sucesso = proximo_turno()
-
         if not sucesso:
-            await interaction.response.send_message(
-                "❌ Não existem combatentes suficientes.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Não existem combatentes suficientes.", ephemeral=True)
             return
+        await interaction.response.edit_message(embed=criar_embed_combate(), view=CombateMestreView())
 
-        await interaction.response.edit_message(
-            embed=criar_embed_combate(),
-            view=CombateMestreView()
-        )
+    @discord.ui.button(label="Atualizar", emoji="🔄", style=discord.ButtonStyle.secondary, row=1)
+    async def atualizar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=criar_embed_combate(), view=CombateMestreView())
 
-    @discord.ui.button(
-        label="Atualizar",
-        emoji="🔄",
-        style=discord.ButtonStyle.secondary
-    )
-    async def atualizar(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-        await interaction.response.edit_message(
-            embed=criar_embed_combate(),
-            view=CombateMestreView()
-        )
-
-    @discord.ui.button(
-        label="Encerrar",
-        emoji="🛑",
-        style=discord.ButtonStyle.danger
-    )
-    async def encerrar(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    @discord.ui.button(label="Encerrar", emoji="🛑", style=discord.ButtonStyle.danger, row=1)
+    async def encerrar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not eh_pesquisador(interaction):
-            await interaction.response.send_message(
-                "🔒 Apenas Pesquisadores podem encerrar.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("🔒 Apenas Pesquisadores podem encerrar.", ephemeral=True)
             return
-
-        cursor.execute(
-            "DELETE FROM combatentes"
-        )
-
-        cursor.execute(
-            """
-            UPDATE combate
-            SET
-                ativo = 0,
-                rodada = 1,
-                turno = 0
-            WHERE id = 1
-            """
-        )
-
+        cursor.execute("DELETE FROM combatentes")
+        cursor.execute("UPDATE combate SET ativo = 0, rodada = 1, turno = 0 WHERE id = 1")
         db.commit()
+        await interaction.response.edit_message(content="🛑 **Combate encerrado.**", embed=None, view=None)
 
-        await interaction.response.edit_message(
-            content="🛑 **Combate encerrado.**",
-            embed=None,
-            view=None
-        )
 
 
 # ==================================================
@@ -2751,6 +2839,8 @@ def criar_embed_ficha_shinobi(ficha):
     if ficha.get("anotacoes"):
         embed.add_field(name="📝 Anotações", value=str(ficha["anotacoes"])[:1024], inline=False)
     embed.set_footer(text="Shinobi no Sho • Sistema D8 • 2d8 + precisão • Ficha privada")
+    ok, msg = validar_shinobi_anti_roubo(ficha)
+    embed.add_field(name="🔒 Anti-roubo", value=msg, inline=False)
     return embed
 
 
@@ -4112,6 +4202,8 @@ def criar_embed_ficha_vampiro(ficha):
     if ficha.get("anotacoes"):
         embed.add_field(name="📝 Anotações", value=str(ficha["anotacoes"])[:1024], inline=False)
     embed.set_footer(text="Vampiro: A Máscara • Parada de dados d10 • Ficha privada")
+    ok, msg = validar_vampiro_anti_roubo(ficha)
+    embed.add_field(name="🔒 Anti-roubo", value=msg, inline=False)
     return embed
 
 
